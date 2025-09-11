@@ -1,6 +1,7 @@
 // src/App.tsx
 import Transport from "./components/transport/Transport";
 import StepSequencer from "./components/editor/StepSequencer";
+import PianoRoll from "./components/editor/PianoRoll";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <h1 style={{ marginBottom: 12 }}>Mini-DAW</h1>
       <Transport />
       <StepSequencer />
+      <PianoRoll />
     </main>
   );
 }
