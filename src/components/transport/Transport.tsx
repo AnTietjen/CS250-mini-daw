@@ -2,15 +2,15 @@
 import { useState, useEffect } from "react";
 import { engine } from "../../audio/engine";
 import { useProject } from "../../store/project";
-import { useSelection } from "../../store/selection";
-import type { Snap } from "../../store/selection"; // <-- type-only import
+import { useTheme, PRESET_COLORS } from "../../store/theme";
 
 export default function Transport() {
   const [audioReady, setAudioReady] = useState(false);
   const bpm = useProject((s) => s.bpm);
   const setBpm = useProject((s) => s.setBpm);
-  const snap = useSelection((s) => s.snap);
-  const setSnap = useSelection((s) => s.setSnap);
+  const primary = useTheme(s => s.primary);
+  const setPrimary = useTheme(s => s.setPrimary);
+  const [metOn, setMetOn] = useState(engine.getMetronomeEnabled());
 
   useEffect(() => {
     // keep engine tempo in sync with store
@@ -22,8 +22,13 @@ export default function Transport() {
     setAudioReady(true);
   }
 
+  // Reflect chosen color into CSS variable so other components can consume
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-primary', primary);
+  }, [primary]);
+
   return (
-    <section style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+    <section style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: 'wrap' }}>
       {!audioReady ? (
         <button onClick={enable} style={{ padding: 8, borderRadius: 8 }}>
           Enable Audio
@@ -48,15 +53,33 @@ export default function Transport() {
             />
           </label>
 
-          {/* Snap selector (will be used by editors & playlist later) */}
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            Snap:
-            <select value={snap} onChange={(e) => setSnap(e.target.value as Snap)}>
-              <option value="1">Beat</option>
-              <option value="1/2">1/2 Beat</option>
-              <option value="1/4">1/4 Beat</option>
-            </select>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
+              <input type="checkbox" checked={metOn} onChange={e => { setMetOn(e.target.checked); engine.setMetronomeEnabled(e.target.checked); }} />
+              Metronome
+            </label>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, opacity: .8 }}>Theme:</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 280 }}>
+              {PRESET_COLORS.map(c => (
+                <button
+                  key={c.value}
+                  onClick={() => setPrimary(c.value)}
+                  title={c.name}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    border: c.value === primary ? '2px solid #fff' : '2px solid #1e293b',
+                    background: c.value,
+                    cursor: 'pointer',
+                    boxShadow: c.value === primary ? '0 0 0 2px rgba(255,255,255,0.3)' : 'none'
+                  }}
+                />
+              ))}
+            </div>
+          </div>
         </>
       )}
     </section>

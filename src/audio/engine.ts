@@ -7,6 +7,7 @@ class Engine {
   private limiter: Tone.Limiter | null = null;
   private metSynth: Tone.Synth | null = null;
   private metLoop: Tone.Loop | null = null;
+  private metronomeEnabled = true;
 
   // --- Drums ---
   private kick: Tone.MembraneSynth | null = null;
@@ -25,9 +26,11 @@ class Engine {
 
   // --- Piano roll (12 chromatic notes × 16 steps)
   private lead: Tone.PolySynth | null = null;
-  private synthGrid: boolean[][] = Array.from({ length: 12 }, () => Array(16).fill(false));
+  // Piano roll note objects (variable length)
+  private synthNotes: { id: string; pitch: string; pitchIndex: number; start: number; length: number }[] = [];
+  private synthNotesByStart: Record<number, { id: string; pitch: string; pitchIndex: number; start: number; length: number }[]> = {};
 
-  // Top→bottom rows (descending): B4 down to C4 (1 octave, chromatic)
+  // Dynamic pitch map (descending, top→bottom). Default one octave until UI sets full range.
   private pianoPitches = ["B4","A#4","A4","G#4","G4","F#4","F4","E4","D#4","D4","C#4","C4"];
 
   private initGraph() {
@@ -43,7 +46,9 @@ class Engine {
       volume: -10,
     }).connect(this.limiter);
     this.metLoop = new Tone.Loop((time) => {
-      this.metSynth!.triggerAttackRelease("C6", "16n", time);
+      if (this.metronomeEnabled) {
+        this.metSynth!.triggerAttackRelease("C6", "16n", time);
+      }
     }, "4n").start(0);
 
     // Drums
@@ -75,6 +80,7 @@ class Engine {
     });
 
     // 16th-note driver
+    // 16 steps (1 bar of 16th notes)
     this.stepSeq = new Tone.Sequence(
       (time, stepIx) => {
         // Drums
@@ -82,12 +88,17 @@ class Engine {
         if (this.drumPattern[1][stepIx]) this.snare!.triggerAttackRelease("16n", time);
         if (this.drumPattern[2][stepIx]) this.hat!.triggerAttackRelease("32n", time);
 
-        // Chords: collect all active notes in this column
-        const notes: string[] = [];
-        for (let r = 0; r < this.synthGrid.length; r++) {
-          if (this.synthGrid[r][stepIx]) notes.push(this.pianoPitches[r]);
+        // Variable-length notes: trigger any whose start == stepIx
+        const starts = this.synthNotesByStart[stepIx];
+        if (starts && starts.length) {
+          const bpm = Tone.Transport.bpm.value;
+          const secondsPerBeat = 60 / bpm;
+          for (const n of starts) {
+            const clampedLen = Math.max(1, n.length);
+            const durSeconds = secondsPerBeat * 0.25 * clampedLen;
+            this.lead!.triggerAttackRelease(n.pitch, durSeconds, time);
+          }
         }
-        if (notes.length) this.lead!.triggerAttackRelease(notes, "16n", time);
       },
       Array.from({ length: 16 }, (_, i) => i),
       "16n"
@@ -95,6 +106,8 @@ class Engine {
 
     Tone.Transport.bpm.value = 110;
     this.initialized = true;
+    // Keep references so linter treats them as used
+    void this.metLoop; void this.stepSeq;
   }
 
   async startAudio() { await Tone.start(); this.initGraph(); }
@@ -107,12 +120,38 @@ class Engine {
     this.drumPattern = safe as [boolean[], boolean[], boolean[]];
   }
 
-  setSynthGrid(grid: boolean[][]) {
-    const rows = Math.min(grid.length, 12);
-    const next: boolean[][] = [];
-    for (let r = 0; r < rows; r++) next.push((grid[r] || []).slice(0, 16));
-    this.synthGrid = next.length ? next : this.synthGrid;
+  setSynthNotes(notes: { id: string; pitchIndex?: number; pitch?: string; start: number; length: number }[]) {
+    // Clamp and normalize, prefer explicit pitch if provided
+    this.synthNotes = notes.map(n => {
+      let pIndex = n.pitchIndex ?? 0;
+      pIndex = Math.min(this.pianoPitches.length - 1, Math.max(0, pIndex));
+      const pitch = (n.pitch) ? n.pitch : (this.pianoPitches[pIndex] || "C4");
+      return {
+        id: n.id,
+        pitchIndex: pIndex,
+        pitch,
+        start: Math.min(15, Math.max(0, Math.round(n.start))),
+        length: Math.min(16, Math.max(1, Math.round(n.length)))
+      };
+    })
+    .filter(n => n.start < 16)
+    .sort((a, b) => a.start - b.start || a.pitchIndex - b.pitchIndex);
+
+    const by: Record<number, typeof this.synthNotes> = {} as any;
+    for (const n of this.synthNotes) {
+      (by[n.start] ||= []).push(n);
+    }
+    this.synthNotesByStart = by;
   }
+  setPitchMap(pitches: string[]) {
+    if (!Array.isArray(pitches) || pitches.length === 0) return;
+    this.pianoPitches = pitches.slice();
+    // Re-apply note clamping to new range
+    this.setSynthNotes(this.synthNotes);
+  }
+
+  setMetronomeEnabled(on: boolean) { this.metronomeEnabled = on; }
+  getMetronomeEnabled() { return this.metronomeEnabled; }
 }
 
 export const engine = new Engine();

@@ -1,0 +1,51 @@
+// src/store/windows.ts
+// Window manager (draggable, resizable, minimizable) using Zustand.
+import { create } from "zustand";
+
+export type WindowKind = "stepSequencer" | "pianoRoll" | "settings";
+
+export interface WindowState {
+  id: string;           // stable id
+  kind: WindowKind;     // which component to render
+  title: string;        // header title
+  x: number;            // top-left position (px)
+  y: number;
+  w: number;            // width (px)
+  h: number;            // height (px)
+  z: number;            // z-index stacking
+  minimized: boolean;   // collapsed state
+}
+
+interface WindowsStore {
+  windows: WindowState[];
+  bringToFront: (id: string) => void;
+  move: (id: string, x: number, y: number) => void;
+  resize: (id: string, w: number, h: number) => void;
+  toggleMin: (id: string) => void;
+  nextZ: number; // incremental counter
+}
+
+export const useWindows = create<WindowsStore>((set) => ({
+  windows: [
+    { id: "win-step", kind: "stepSequencer", title: "Step Sequencer", x: 40, y: 120, w: 560, h: 240, z: 1, minimized: false },
+    { id: "win-piano", kind: "pianoRoll", title: "Piano Roll", x: 40, y: 380, w: 560, h: 380, z: 2, minimized: false },
+    { id: "win-settings", kind: "settings", title: "Settings / Transport", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
+  ],
+  nextZ: 4,
+  bringToFront: (id) => set((s) => {
+    const z = s.nextZ;
+    return {
+      windows: s.windows.map(w => w.id === id ? { ...w, z } : w),
+      nextZ: z + 1,
+    };
+  }),
+  move: (id, x, y) => set((s) => ({
+    windows: s.windows.map(w => w.id === id ? { ...w, x, y } : w)
+  })),
+  resize: (id, w, h) => set((s) => ({
+    windows: s.windows.map(win => win.id === id ? { ...win, w: Math.max(200, w), h: Math.max(120, h) } : win)
+  })),
+  toggleMin: (id) => set((s) => ({
+    windows: s.windows.map(win => win.id === id ? { ...win, minimized: !win.minimized } : win)
+  })),
+}));
