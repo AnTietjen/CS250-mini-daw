@@ -23,13 +23,15 @@ interface WindowsStore {
   resize: (id: string, w: number, h: number) => void;
   toggleMin: (id: string) => void;
   nextZ: number; // incremental counter
+  addPianoWindow: () => string; // returns id
+  closeWindow: (id: string) => void;
 }
 
 export const useWindows = create<WindowsStore>((set) => ({
   windows: [
     { id: "win-step", kind: "stepSequencer", title: "Step Sequencer", x: 40, y: 120, w: 560, h: 240, z: 1, minimized: false },
     { id: "win-piano", kind: "pianoRoll", title: "Piano Roll", x: 40, y: 380, w: 560, h: 380, z: 2, minimized: false },
-    { id: "win-settings", kind: "settings", title: "Settings / Transport", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
+    { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
   ],
   nextZ: 4,
   bringToFront: (id) => set((s) => {
@@ -48,4 +50,13 @@ export const useWindows = create<WindowsStore>((set) => ({
   toggleMin: (id) => set((s) => ({
     windows: s.windows.map(win => win.id === id ? { ...win, minimized: !win.minimized } : win)
   })),
+  addPianoWindow: () => {
+    const id = `win-piano-${Math.random().toString(36).slice(2,7)}`;
+    set((s) => ({
+      windows: [...s.windows, { id, kind: "pianoRoll", title: "Piano Roll", x: 60 + (s.windows.length%4)*40, y: 100 + (s.windows.length%4)*40, w: 560, h: 360, z: s.nextZ, minimized: false }],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+  closeWindow: (id) => set((s) => ({ windows: s.windows.filter(w => w.id !== id) })),
 }));

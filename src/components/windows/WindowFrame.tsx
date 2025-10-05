@@ -1,37 +1,57 @@
 // src/components/windows/WindowFrame.tsx
-import { useRef, useCallback, useEffect } from "react";
+import React, { useRef, useCallback, useEffect, useMemo } from "react";
 import { useWindows } from "../../store/windows";
-import type { WindowState } from "../../store/windows";
+import StepSequencer from "../editor/StepSequencer";
+import PianoRoll from "../editor/PianoRoll";
+import { usePianoInstances } from "../../store/pianoInstances";
+import { engine } from "../../audio/engine";
+import Transport from "../transport/Transport";
 
-interface Props {
-  win: WindowState;
-  children: React.ReactNode;
-}
+interface Props { id: string }
 
-export function WindowFrame({ win, children }: Props) {
+export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
+  const win = useWindows(s => s.windows.find(w => w.id === id)!);
   const bringToFront = useWindows(s => s.bringToFront);
   const move = useWindows(s => s.move);
   const resize = useWindows(s => s.resize);
   const toggleMin = useWindows(s => s.toggleMin);
+  const close = useWindows(s => s.closeWindow);
 
   const dragData = useRef<{ offX: number; offY: number; id: string } | null>(null);
   const sizeData = useRef<{ startW: number; startH: number; startX: number; startY: number; id: string } | null>(null);
+  const rafMove = useRef<number | null>(null);
+  const lastMove = useRef<{ x: number; y: number } | null>(null);
 
   const onPointerMove = useCallback((e: PointerEvent) => {
     if (dragData.current) {
       const { offX, offY, id } = dragData.current;
-      move(id, e.clientX - offX, e.clientY - offY);
+      lastMove.current = { x: e.clientX - offX, y: e.clientY - offY };
+      if (rafMove.current == null) {
+        rafMove.current = requestAnimationFrame(() => {
+          rafMove.current = null;
+          if (lastMove.current) move(id, lastMove.current.x, lastMove.current.y);
+        });
+      }
     } else if (sizeData.current) {
       const { startW, startH, startX, startY, id } = sizeData.current;
       const dw = e.clientX - startX;
       const dh = e.clientY - startY;
-      resize(id, startW + dw, startH + dh);
+      // Throttle resize slightly via rAF as well
+      lastMove.current = { x: startW + dw, y: startH + dh } as any;
+      if (rafMove.current == null) {
+        rafMove.current = requestAnimationFrame(() => {
+          rafMove.current = null;
+          if (lastMove.current) resize(id, (lastMove.current as any).x, (lastMove.current as any).y);
+        });
+      }
     }
   }, [move, resize]);
 
   const endInteraction = useCallback(() => {
     dragData.current = null;
     sizeData.current = null;
+    if (rafMove.current != null) cancelAnimationFrame(rafMove.current);
+    rafMove.current = null;
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", endInteraction);
   }, [onPointerMove]);
@@ -60,12 +80,44 @@ export function WindowFrame({ win, children }: Props) {
     window.addEventListener("pointerup", endInteraction);
   };
 
+  // Create/delete piano instance tied to this window if it's a pianoRoll
+  const createInstance = usePianoInstances(s => s.createInstance);
+  const deleteInstance = usePianoInstances(s => s.deleteInstance);
+  const getInst = usePianoInstances(s => s.instances[win.id]);
+  useEffect(() => {
+    if (win.kind === "pianoRoll") {
+      createInstance(win.id);
+      // Ensure engine synth and initialize with stored params if present
+      engine.ensureInstanceSynth(win.id);
+      const wave = getInst?.wave ?? 'sawtooth';
+      const volume = getInst?.volume ?? 0.8;
+      engine.setInstanceWave(win.id, wave as any);
+      engine.setInstanceVolume(win.id, volume);
+    }
+    return () => {
+      if (win.kind === "pianoRoll") {
+        deleteInstance(win.id);
+        engine.removePianoInstance(win.id);
+      }
+    };
+  }, [win.kind, win.id, createInstance, deleteInstance]);
+
+  const content = useMemo(() => {
+    switch (win.kind) {
+      case "stepSequencer": return <StepSequencer />;
+      case "pianoRoll": return <PianoRoll instanceId={win.id} />;
+      case "settings": return <Transport />;
+      default: return <div>Unknown window: {win.kind}</div>;
+    }
+  }, [win.kind, win.id]);
+
   return (
     <div
       style={{
         position: "absolute",
-        left: win.x,
-        top: win.y,
+        left: 0,
+        top: 0,
+        transform: `translate3d(${win.x}px, ${win.y}px, 0)`,
         width: win.w,
         height: win.minimized ? 36 : win.h,
         zIndex: win.z,
@@ -77,6 +129,9 @@ export function WindowFrame({ win, children }: Props) {
         boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
         overflow: "hidden",
         userSelect: "none",
+        willChange: "transform, width, height",
+        contain: "layout paint",
+        backfaceVisibility: "hidden",
       }}
       onPointerDown={() => bringToFront(win.id)}
     >
@@ -105,11 +160,19 @@ export function WindowFrame({ win, children }: Props) {
           >
             {win.minimized ? "▢" : "_"}
           </button>
+          {win.kind === "pianoRoll" && (
+            <button
+              data-btn
+              onClick={() => close(win.id)}
+              style={buttonStyle}
+              title="Close"
+            >×</button>
+          )}
         </div>
       </div>
       {!win.minimized && (
         <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
-          {children}
+          {content}
         </div>
       )}
       {!win.minimized && (
@@ -129,7 +192,7 @@ export function WindowFrame({ win, children }: Props) {
       )}
     </div>
   );
-}
+});
 
 const buttonStyle: React.CSSProperties = {
   width: 24,

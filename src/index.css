@@ -30,6 +30,119 @@ body {
   display: block;
 }
 
+/* Ambient animated background (glassmorphism-inspired) */
+:root {
+  /* Fallbacks in case theme var isn't set yet */
+  --ui-primary: #60a5fa;
+  /* Ambient tuning */
+  --ambient-blur: 32px;
+  --anim-speed-mult: 1;
+  --aurora-opacity: 1;
+  --trails-opacity: 0.35;
+  --flare-opacity: 0.5;
+  --ambient-a: color-mix(in srgb, var(--ui-primary) 32%, transparent);
+  --ambient-b: color-mix(in srgb, var(--ui-primary) 22%, #14b8a666);
+  --ambient-c: color-mix(in srgb, var(--ui-primary) 18%, #a855f766);
+}
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(var(--ambient-blur)) saturate(120%);
+  will-change: filter;
+  contain: paint;
+}
+
+/* Aurora ribbon made from layered conic gradients with hue shifting via mix */
+.ambient .aurora {
+  position: absolute;
+  inset: -20vmax;
+  opacity: var(--aurora-opacity);
+  background:
+    conic-gradient(from 120deg at 30% 40%, var(--ambient-a), transparent 60%),
+    conic-gradient(from -30deg at 70% 60%, var(--ambient-b), transparent 60%),
+    conic-gradient(from 200deg at 50% 20%, var(--ambient-c), transparent 60%);
+  animation: aurora-drift calc(36s * var(--anim-speed-mult)) ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Thin light trails using repeating linear gradients */
+.ambient .trails {
+  position: absolute;
+  inset: -10vmax;
+  background:
+    repeating-linear-gradient(75deg, color-mix(in srgb, var(--ui-primary) 10%, transparent) 0 2px, transparent 2px 14px),
+    repeating-linear-gradient(-35deg, color-mix(in srgb, var(--ui-primary) 6%, transparent) 0 1px, transparent 1px 18px);
+  opacity: var(--trails-opacity);
+  mix-blend-mode: screen;
+  filter: blur(10px);
+  animation: trails-pan calc(48s * var(--anim-speed-mult)) linear infinite;
+  will-change: transform;
+}
+
+/* Subtle lens flares using radial gradients */
+.ambient .flare {
+  position: absolute;
+  width: 26vmax;
+  height: 26vmax;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--ui-primary) 24%, transparent) 0%, transparent 70%);
+  filter: blur(18px) saturate(140%);
+  mix-blend-mode: screen;
+  opacity: var(--flare-opacity);
+  will-change: transform;
+}
+.ambient .flare.f1 { top: -8vmax; left: 20vmax; animation: flare1 calc(38s * var(--anim-speed-mult)) ease-in-out infinite alternate; }
+.ambient .flare.f2 { bottom: -10vmax; right: 16vmax; animation: flare2 calc(44s * var(--anim-speed-mult)) ease-in-out infinite alternate; }
+
+/* Ultra-light film grain (static) */
+.ambient .grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, #ffffff22 0, transparent 1px),
+    radial-gradient(1px 1px at 30% 80%, #ffffff11 0, transparent 1px),
+    radial-gradient(1px 1px at 55% 50%, #ffffff11 0, transparent 1px),
+    radial-gradient(1px 1px at 80% 30%, #ffffff22 0, transparent 1px);
+  mix-blend-mode: overlay;
+}
+
+@keyframes aurora-drift {
+  from { transform: rotate(0deg) scale(1); }
+  to   { transform: rotate(8deg) translate3d(3vmax, -2vmax, 0) scale(1.05); }
+}
+@keyframes trails-pan {
+  from { transform: translate3d(0,0,0); }
+  to   { transform: translate3d(-6vmax, -4vmax, 0); }
+}
+@keyframes flare1 {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(6vmax, 4vmax, 0) scale(1.1); }
+}
+@keyframes flare2 {
+  from { transform: translate3d(0,0,0) scale(1.05); }
+  to   { transform: translate3d(-5vmax, -6vmax, 0) scale(1.12); }
+}
+
+/* Performance mode and motion reduce hooks */
+.effects-low .ambient { filter: blur(calc(var(--ambient-blur) * 0.5)) saturate(110%); }
+.effects-low .ambient .aurora { inset: -12vmax; }
+.effects-low .ambient .trails { display: none; }
+.effects-low .ambient .flare { opacity: calc(var(--flare-opacity) * 0.6); filter: blur(12px) saturate(120%); }
+
+.motion-off .ambient * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ambient *,
+  .ambient *::before,
+  .ambient *::after {
+    animation-play-state: paused !important;
+  }
+}
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;

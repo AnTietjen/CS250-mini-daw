@@ -1,8 +1,11 @@
 // src/components/transport/Transport.tsx
 import { useState, useEffect } from "react";
 import { engine } from "../../audio/engine";
+import { useSnap } from "../../store/snap";
+import { usePlayhead } from "../../store/playhead";
 import { useProject } from "../../store/project";
 import { useTheme, PRESET_COLORS } from "../../store/theme";
+import { useWindows } from "../../store/windows";
 
 export default function Transport() {
   const [audioReady, setAudioReady] = useState(false);
@@ -11,11 +14,37 @@ export default function Transport() {
   const primary = useTheme(s => s.primary);
   const setPrimary = useTheme(s => s.setPrimary);
   const [metOn, setMetOn] = useState(engine.getMetronomeEnabled());
+  const snap = useSnap(s => s.snap);
+  const setSnap = useSnap(s => s.setSnap);
+  const playing = usePlayhead(s => s.playing);
+  const addPianoWindow = useWindows(s => s.addPianoWindow);
 
   useEffect(() => {
     // keep engine tempo in sync with store
     engine.setTempo(bpm);
   }, [bpm]);
+
+  // Spacebar play/stop toggle (ignore when typing in inputs/textarea)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        const target = e.target as HTMLElement | null;
+        const isTyping = !!(target && (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.getAttribute('contenteditable') === 'true'));
+        if (isTyping) return;
+        e.preventDefault();
+        if (!audioReady) {
+          engine.startAudio().then(() => {
+            setAudioReady(true);
+            engine.play();
+          });
+          return;
+        }
+        if (playing) engine.stop(); else engine.play();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [audioReady, playing]);
 
   async function enable() {
     await engine.startAudio();
@@ -58,6 +87,16 @@ export default function Transport() {
               <input type="checkbox" checked={metOn} onChange={e => { setMetOn(e.target.checked); engine.setMetronomeEnabled(e.target.checked); }} />
               Metronome
             </label>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
+              Snap
+              <select value={snap} onChange={e => setSnap(e.target.value as any)} style={{ padding: '2px 6px' }}>
+                <option value="1/4">1/4</option>
+                <option value="1/8">1/8</option>
+                <option value="1/16">1/16</option>
+                <option value="1/3">1/3</option>
+                <option value="1/6">1/6</option>
+              </select>
+            </label>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, opacity: .8 }}>Theme:</span>
@@ -79,6 +118,16 @@ export default function Transport() {
                 />
               ))}
             </div>
+          </div>
+          {/* Piano Roll add button (windows have their own close X) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => {
+                addPianoWindow();
+              }}
+              style={{ padding: '6px 10px', borderRadius: 6 }}
+              title="Add Piano Roll"
+            >+ Piano Roll</button>
           </div>
         </>
       )}
