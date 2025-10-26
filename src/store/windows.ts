@@ -2,7 +2,7 @@
 // Window manager (draggable, resizable, minimizable) using Zustand.
 import { create } from "zustand";
 
-export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard";
+export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard" | "mixer" | "visualizer";
 
 export interface WindowState {
   id: string;           // stable id
@@ -26,6 +26,8 @@ interface WindowsStore {
   addPianoWindow: () => string; // returns id
   closeWindow: (id: string) => void;
   addKeyboardWindow: () => string;
+  addMixerWindow: () => string;
+  addVisualizerWindow: () => string;
 }
 
 export const useWindows = create<WindowsStore>((set) => ({
@@ -34,8 +36,10 @@ export const useWindows = create<WindowsStore>((set) => ({
     { id: "win-piano", kind: "pianoRoll", title: "Piano Roll", x: 40, y: 380, w: 560, h: 380, z: 2, minimized: false },
     { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
     { id: "win-keys", kind: "keyboard", title: "Typing Keyboard", x: 640, y: 340, w: 360, h: 260, z: 4, minimized: false },
+    { id: "win-mixer", kind: "mixer", title: "Mixer", x: 1020, y: 120, w: 520, h: 340, z: 5, minimized: false },
+    { id: "win-vis", kind: "visualizer", title: "Visualizer", x: 1020, y: 480, w: 520, h: 240, z: 6, minimized: false },
   ],
-  nextZ: 5,
+  nextZ: 7,
   bringToFront: (id) => set((s) => {
     const z = s.nextZ;
     return {
@@ -64,6 +68,22 @@ export const useWindows = create<WindowsStore>((set) => ({
     const id = `win-keys-${Math.random().toString(36).slice(2,7)}`;
     set((s) => ({
       windows: [...s.windows, { id, kind: "keyboard", title: "Typing Keyboard", x: 80 + (s.windows.length%4)*40, y: 120 + (s.windows.length%4)*40, w: 360, h: 260, z: s.nextZ, minimized: false }],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+  addMixerWindow: () => {
+    const id = `win-mix-${Math.random().toString(36).slice(2,7)}`;
+    set((s) => ({
+      windows: [...s.windows, { id, kind: "mixer", title: "Mixer", x: 120 + (s.windows.length%4)*40, y: 140 + (s.windows.length%4)*40, w: 520, h: 340, z: s.nextZ, minimized: false }],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+  addVisualizerWindow: () => {
+    const id = `win-vis-${Math.random().toString(36).slice(2,7)}`;
+    set((s) => ({
+      windows: [...s.windows, { id, kind: "visualizer", title: "Visualizer", x: 140 + (s.windows.length%4)*40, y: 160 + (s.windows.length%4)*40, w: 520, h: 240, z: s.nextZ, minimized: false }],
       nextZ: s.nextZ + 1,
     }));
     return id;

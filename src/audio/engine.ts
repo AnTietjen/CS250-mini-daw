@@ -6,6 +6,8 @@ class Engine {
   private initialized = false;
 
   private limiter: Tone.Limiter | null = null;
+  private analyserFFT: Tone.Analyser | null = null;
+  private analyserWave: Tone.Analyser | null = null;
   private metSynth: Tone.Synth | null = null;
   private metLoop: Tone.Loop | null = null;
   private metronomeEnabled = true;
@@ -45,7 +47,12 @@ class Engine {
     if (this.initialized) return;
 
     // Master
-    this.limiter = new Tone.Limiter(-1).toDestination();
+  this.limiter = new Tone.Limiter(-1).toDestination();
+  // Lightweight analysers tapped off the limiter (post-mix)
+  this.analyserFFT = new Tone.Analyser("fft", 512);
+  this.analyserWave = new Tone.Analyser("waveform", 1024);
+  this.limiter.connect(this.analyserFFT);
+  this.limiter.connect(this.analyserWave);
 
     // Metronome
     this.metSynth = new Tone.Synth({
@@ -237,6 +244,7 @@ class Engine {
 
   setMetronomeEnabled(on: boolean) { this.metronomeEnabled = on; }
   getMetronomeEnabled() { return this.metronomeEnabled; }
+  getAnalysers() { return { fft: this.analyserFFT, wave: this.analyserWave }; }
 
   // Per-instance instrument controls
   ensureInstanceSynth(instanceId: string) {
