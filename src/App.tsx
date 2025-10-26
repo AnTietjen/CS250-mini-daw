@@ -17,14 +17,7 @@ export default function App() {
         zIndex: 1,
       }}
     >
-      {/* Ambient animated background layer (aurora + trails + flares + grain) */}
-      <div className="ambient">
-        <div className="aurora" />
-        <div className="trails" />
-        <div className="flare f1" />
-        <div className="flare f2" />
-        <div className="grain" />
-      </div>
+      {/* Decorative ambient background removed for performance (was: aurora/trails/flares/grain) */}
       <header style={{ position: "absolute", top: 8, left: 16, fontSize: 20, fontWeight: 600, pointerEvents: "none", opacity: 0.8 }}>
         Mini-DAW
       </header>

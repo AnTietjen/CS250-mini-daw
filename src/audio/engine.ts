@@ -28,7 +28,7 @@ class Engine {
   // --- Piano roll
   private lead: Tone.PolySynth | null = null;
   private synthGain: Tone.Gain | null = null;
-  private leadSynths: Record<string, { synth: Tone.PolySynth; gain: Tone.Gain }> = {};
+  private leadSynths: Record<string, { mode: "synth"; synth: Tone.PolySynth; gain: Tone.Gain } | { mode: "sampler"; sampler: Tone.Sampler; gain: Tone.Gain }> = {};
   private noise: Tone.Noise | null = null;
   private noiseEnv: Tone.AmplitudeEnvelope | null = null;
   private noiseGain: Tone.Gain | null = null;
@@ -81,7 +81,7 @@ class Engine {
 
     // Poly synth = chords
     this.synthGain = new Tone.Gain(0.8);
-    this.lead = new Tone.PolySynth(Tone.Synth).connect(this.synthGain);
+  this.lead = new Tone.PolySynth(Tone.Synth).connect(this.synthGain);
     this.lead.set({
       volume: -6,
       oscillator: { type: "sawtooth" },
@@ -89,7 +89,7 @@ class Engine {
     });
     this.synthGain.connect(this.limiter);
     // Register default instance synth mapping to keep backward compatibility
-    this.leadSynths["default"] = { synth: this.lead, gain: this.synthGain } as { synth: Tone.PolySynth; gain: Tone.Gain };
+  this.leadSynths["default"] = { mode: "synth", synth: this.lead, gain: this.synthGain } as any;
 
     // White noise overlay chain: Noise -> Env -> Gain -> Limiter
     this.noise = new Tone.Noise("white").start();
@@ -118,9 +118,14 @@ class Engine {
             const clampedLen = Math.max(1, n.length);
             // substep = beat/12 → duration (beats) = len / 12
             const durSeconds = secondsPerBeat * (clampedLen / 12);
-            const synthEntry = this.leadSynths[n.instanceId] || this.leadSynths["default"];
-            const targetSynth = synthEntry?.synth || this.lead!;
-            targetSynth.triggerAttackRelease(n.pitch, durSeconds, time);
+            const instEntry = this.leadSynths[n.instanceId] || this.leadSynths["default"];
+            if (instEntry) {
+              if ((instEntry as any).synth) (instEntry as any).synth.triggerAttackRelease(n.pitch, durSeconds, time);
+              else if ((instEntry as any).sampler) (instEntry as any).sampler.triggerAttackRelease(n.pitch, durSeconds, time);
+              else this.lead!.triggerAttackRelease(n.pitch, durSeconds, time);
+            } else {
+              this.lead!.triggerAttackRelease(n.pitch, durSeconds, time);
+            }
             // Trigger noise envelope if enabled
             if (this.noiseEnv && this.noiseGain && this.noiseGain.gain.value > 0) {
               this.noiseEnv.triggerAttackRelease(durSeconds, time);
@@ -198,7 +203,7 @@ class Engine {
     // Dispose synth if exists
     const e = this.leadSynths[instanceId];
     if (e) {
-      try { e.synth.dispose(); } catch {}
+      try { (e as any).synth ? (e as any).synth.dispose() : (e as any).sampler.dispose(); } catch {}
       try { e.gain.dispose(); } catch {}
       delete this.leadSynths[instanceId];
     }
@@ -216,7 +221,7 @@ class Engine {
 
   // Instrument controls
   setOscillator(type: "sine" | "square" | "sawtooth" | "triangle") {
-    const entry = this.leadSynths["default"]; if (!entry) return;
+    const entry = this.leadSynths["default"]; if (!entry || entry.mode !== "synth") return;
     entry.synth.set({ oscillator: { type } });
   }
   setSynthVolume(linear: number) {
@@ -245,11 +250,11 @@ class Engine {
       envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 },
     });
     gain.connect(this.limiter!);
-    this.leadSynths[instanceId] = { synth, gain };
+    this.leadSynths[instanceId] = { mode: "synth", synth, gain } as any;
   }
   setInstanceWave(instanceId: string, type: "sine" | "square" | "sawtooth" | "triangle") {
     const entry = this.leadSynths[instanceId];
-    if (!entry) return;
+    if (!entry || entry.mode !== "synth") return;
     entry.synth.set({ oscillator: { type } });
   }
   setInstanceVolume(instanceId: string, linear: number) {
@@ -257,6 +262,94 @@ class Engine {
     if (!entry) return;
     const v = Math.max(0, Math.min(1, linear));
     entry.gain.gain.value = v;
+  }
+  setInstanceEnvelope(instanceId: string, env: Partial<Tone.SynthOptions["envelope"]>) {
+    const entry = this.leadSynths[instanceId];
+    if (!entry || entry.mode !== "synth") return;
+    entry.synth.set({ envelope: { ...env } as any });
+  }
+
+  // Switch an instance to a sampled piano (Salamander) using Tone.Sampler
+  setInstanceToPianoSampler(instanceId: string) {
+    if (!this.limiter) this.initGraph();
+    // Dispose existing instrument
+    const existing = this.leadSynths[instanceId];
+    if (existing) {
+      try {
+        if (existing.mode === "synth") existing.synth.dispose(); else existing.sampler.dispose();
+      } catch {}
+    }
+    const gain = new Tone.Gain(existing?.gain?.gain?.value ?? 0.9);
+    const sampler = new Tone.Sampler({
+      urls: {
+        A1: "A1.mp3",
+        C2: "C2.mp3",
+        "D#2": "Ds2.mp3",
+        "F#2": "Fs2.mp3",
+        A2: "A2.mp3",
+        C3: "C3.mp3",
+        "D#3": "Ds3.mp3",
+        "F#3": "Fs3.mp3",
+        A3: "A3.mp3",
+        C4: "C4.mp3",
+        "D#4": "Ds4.mp3",
+        "F#4": "Fs4.mp3",
+        A4: "A4.mp3",
+        C5: "C5.mp3",
+        "D#5": "Ds5.mp3",
+        "F#5": "Fs5.mp3",
+        A5: "A5.mp3",
+        C6: "C6.mp3",
+      },
+      release: 1,
+      baseUrl: "https://tonejs.github.io/audio/salamander/",
+    }).connect(gain);
+    gain.connect(this.limiter!);
+    this.leadSynths[instanceId] = { mode: "sampler", sampler, gain } as any;
+  }
+  // Switch back to a basic synth with desired wave/envelope
+  setInstanceToBasicSynth(instanceId: string, wave: "sine" | "square" | "sawtooth" | "triangle", env?: Partial<Tone.SynthOptions["envelope"]>) {
+    if (!this.limiter) this.initGraph();
+    const existing = this.leadSynths[instanceId];
+    if (existing && existing.mode === "synth") {
+      existing.synth.set({ oscillator: { type: wave }, envelope: { ...(env as any) } });
+      return;
+    }
+    // Dispose sampler if present and create synth
+    if (existing && existing.mode === "sampler") {
+      try { existing.sampler.dispose(); } catch {}
+    }
+    const gain = new Tone.Gain(existing?.gain?.gain?.value ?? 0.8);
+    const synth = new Tone.PolySynth(Tone.Synth).connect(gain);
+    synth.set({
+      volume: -6,
+      oscillator: { type: wave },
+      envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2, ...(env as any) },
+    });
+    gain.connect(this.limiter!);
+    this.leadSynths[instanceId] = { mode: "synth", synth, gain } as any;
+  }
+
+  // Live play helpers (for typing keyboard, MIDI, etc.)
+  noteOn(instanceId: string, note: number | string, velocity: number = 0.9) {
+    if (!this.initialized) this.initGraph();
+    if (!this.leadSynths[instanceId]) this.ensureInstanceSynth(instanceId);
+    const entry = this.leadSynths[instanceId];
+    if (!entry) return;
+    const freq = typeof note === "number" ? (Tone.Frequency(note, "midi").toNote()) : note;
+    try {
+      if ((entry as any).synth) (entry as any).synth.triggerAttack(freq, undefined, velocity);
+      else (entry as any).sampler.triggerAttack(freq, undefined, velocity);
+    } catch {}
+  }
+  noteOff(instanceId: string, note: number | string) {
+    const entry = this.leadSynths[instanceId];
+    if (!entry) return;
+    const freq = typeof note === "number" ? (Tone.Frequency(note, "midi").toNote()) : note;
+    try {
+      if ((entry as any).synth) (entry as any).synth.triggerRelease(freq);
+      else (entry as any).sampler.triggerRelease(freq);
+    } catch {}
   }
 }
 

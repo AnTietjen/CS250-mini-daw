@@ -12,7 +12,7 @@ export interface PianoNote {
 export interface PianoInstance {
   id: string;
   notes: PianoNote[];
-  wave: "sine" | "square" | "sawtooth" | "triangle";
+  wave: "sine" | "square" | "sawtooth" | "triangle" | "piano";
   volume: number; // 0..1
 }
 

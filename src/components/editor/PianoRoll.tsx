@@ -51,7 +51,10 @@ export default function PianoRoll({ instanceId }: { instanceId?: string }) {
   }, []);
 
   // Keep engine in sync with per-instance instrument params
-  useEffect(() => { engine.setInstanceWave(id, wave as any); }, [id, wave]);
+  useEffect(() => {
+    if (wave === 'piano') engine.setInstanceToPianoSampler(id);
+    else engine.setInstanceToBasicSynth(id, wave as any);
+  }, [id, wave]);
   useEffect(() => { engine.setInstanceVolume(id, volume); }, [id, volume]);
 
   // Sync engine whenever note set changes (send explicit pitch string to avoid index mismatches)
@@ -197,6 +200,7 @@ export default function PianoRoll({ instanceId }: { instanceId?: string }) {
               <option value="square">Square</option>
               <option value="sawtooth">Saw</option>
               <option value="triangle">Triangle</option>
+              <option value="piano">Piano (Sampled)</option>
             </select>
           </div>
           <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>

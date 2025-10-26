@@ -2,6 +2,8 @@
 
 Purpose: Enable an agent to quickly extend this minimal React + Tone.js mini-DAW while preserving architectural boundaries.
 
+IMPORTANT - DON'T USE TOO MANY CMD COMMANDS. IT USUALLY DOESN'T WORK. ESPECIALLY NO SERVERS OR PYLANCE STUFF. 
+
 ## Core Architecture (Know This First)
 - React + TypeScript + Vite app. Entry: `src/main.tsx` → `App.tsx` → feature components.
 - Deterministic state is kept in small Zustand stores under `src/store/` (pure serializable data, no Tone objects).
@@ -28,47 +30,33 @@ Purpose: Enable an agent to quickly extend this minimal React + Tone.js mini-DAW
 - Prefer small focused components colocated under `src/components/<domain>/`.
 - Name new hooks with `useX` and keep them framework-pure (no Tone directly; delegate to engine functions).
 
-## Planned / Placeholder Files
-- `src/audio/render.ts`, `src/utils/grid`, `src/utils/io` are empty placeholders (future: offline render, snap math helpers, save/load JSON). Implement only if a feature explicitly needs them.
+## Copilot / Agent instructions — Mini-DAW (concise)
 
-## Adding Features (Patterns to Follow)
-- New instrument type: extend store state shape first, then add builder logic in a new `audio/` helper (e.g., `audio/nodes/<instrument>.ts`) and expose minimal methods on engine to apply state changes.
-- Persistence: implement pure (de)serialization functions in `utils/io` that read/write the Zustand snapshot (avoid Tone objects).
-- Snap/Grid features: create functions in `utils/grid` (e.g., `quantizeStep(index: number, snap: Snap)`) and consume in editors—never inside engine.
+Target: help contributors make safe, small changes. Keep UI state and audio engine separated.
 
-## Tone Transport Usage
-- Engine sets `Tone.Transport.bpm` and runs a single `Tone.Sequence` for 16th resolution; pattern arrays are read column-wise each callback.
-- Keep additional timing logic consolidated (add another `Tone.Loop` only if it cannot be expressed inside the existing sequence callback).
+- Project: React + TypeScript + Vite. Entry: `src/main.tsx` → `App.tsx`.
+- State: lightweight Zustand stores live in `src/store/`. Store values must be JSON-serializable — do not place Tone objects or functions in state.
+- Audio: all Tone.js usage is isolated to `src/audio/engine.ts`. Only call engine methods from effects/hooks; do not import Tone elsewhere.
 
-## Testing / Verification (Lightweight)
-- Run dev server: `npm run dev` (hot reload). No test harness present—prefer adding small logic utilities (e.g., grid math) to `utils/` which can be unit tested later if a test framework is introduced.
-- Lint: `npm run lint` (ESLint + TypeScript recommended rules).
-- Build: `npm run build` (tsc project refs + Vite).
+- Common patterns:
+  - UI mutates store (e.g., `project.ts` for bpm/patterns).
+  - A component `useEffect` watches a slice and calls `engine.setX(...)` to apply changes.
+  - Arrays are cloned before mutation (follow existing functional `set` patterns).
 
-## Safe Extension Checklist (Before PR / Commit)
-1. State changes confined to stores; no Tone objects leaked.  
-2. Engine API surface small (add methods like `setX`, `updateY`, avoid large refactors).  
-3. Effects guard side effects with proper dependency arrays.  
-4. Arrays cloned before mutation (avoid in-place toggles on existing state references).  
-5. New dependencies justified (keep footprint lean; ask before adding audio libs).  
+- Timing/conventions:
+  - Engine uses a high-resolution driver (48 substeps per bar). Drum and synth scheduling is performed inside `engine.ts`.
+  - If you change grid sizes, update both store initializers and engine normalization (`setDrumPattern`, `setSynthNotes*`).
 
-## Example: Adding Swing (Hypothetical)
-- Store: add `swing: number` (0–1) + setter in `project.ts`.
-- Transport UI: slider bound to `swing`.
-- Engine: inside `initGraph()` (after ensuring initialized) set `Tone.Transport.swing` & `swingSubdivision = '8n'`; add a `setSwing()` method called from effect watching store value.
+- Dev commands (use these exactly):
+  - Start dev server: `npm run dev`
+  - Build: `npm run build` (runs `tsc -b` then `vite build`)
+  - Lint: `npm run lint`
 
-## What NOT To Do
-- Don’t schedule notes directly in components.  
-- Don’t store Tone objects or functions in Zustand.  
-- Don’t expand engine complexity without first extracting small builder helpers if it grows large.  
-- Don’t assume persistence/state schema beyond what’s implemented (future model exists in `ARCHITECTURE & DATA MODEL NOTES.txt`).
+- When adding features:
+  1. Extend store shape first (under `src/store/`).
+  2. Add minimal engine API in `src/audio/engine.ts` (e.g., `setSynthNotesForInstance`, `setDrumPattern`).
+  3. Wire with `useEffect` in a component/hook — avoid doing audio work directly in render.
 
-## Key Reference Files
-- `src/audio/engine.ts` – Tone graph & sequencing logic.
-- `src/store/project.ts` – main musical state (tempo + patterns).
-- `src/store/selection.ts` – UI snap (future grid math consumer).
-- `src/components/editor/*` – pattern editors showing state→engine sync pattern.
-- `ARCHITECTURE & DATA MODEL NOTES.txt` – forward-looking model (consult before structural changes).
+- Files to consult for examples: `src/audio/engine.ts`, `src/store/project.ts`, `src/components/editor/*`, `ARCHITECTURE & DATA MODEL NOTES.txt`.
 
----
-If adding a new feature and something here is ambiguous, annotate the uncertainty with a `TODO:` comment and surface for refinement.
+If anything here is unclear or you need deeper examples (e.g., adding a new instrument instance), tell me which area and I’ll expand with a precise code example.

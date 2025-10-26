@@ -6,6 +6,7 @@ import PianoRoll from "../editor/PianoRoll";
 import { usePianoInstances } from "../../store/pianoInstances";
 import { engine } from "../../audio/engine";
 import Transport from "../transport/Transport";
+import TypingKeyboard from "../keyboard/TypingKeyboard";
 
 interface Props { id: string }
 
@@ -91,7 +92,8 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
       engine.ensureInstanceSynth(win.id);
       const wave = getInst?.wave ?? 'sawtooth';
       const volume = getInst?.volume ?? 0.8;
-      engine.setInstanceWave(win.id, wave as any);
+      if (wave === 'piano') engine.setInstanceToPianoSampler(win.id);
+      else engine.setInstanceToBasicSynth(win.id, wave as any);
       engine.setInstanceVolume(win.id, volume);
     }
     return () => {
@@ -107,6 +109,7 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
       case "stepSequencer": return <StepSequencer />;
       case "pianoRoll": return <PianoRoll instanceId={win.id} />;
       case "settings": return <Transport />;
+      case "keyboard": return <TypingKeyboard instanceId={win.id} />;
       default: return <div>Unknown window: {win.kind}</div>;
     }
   }, [win.kind, win.id]);
