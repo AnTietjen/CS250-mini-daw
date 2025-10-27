@@ -9,6 +9,7 @@ import Transport from "../transport/Transport";
 import TypingKeyboard from "../keyboard/TypingKeyboard";
 import Mixer from "../mixer/ChannelMixer";
 import Visualizer from "../visualizer/Visualizer";
+import SampleBrowser from "../rack/SampleBrowser";
 
 interface Props { id: string }
 
@@ -114,10 +115,11 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
       case "keyboard": return <TypingKeyboard instanceId={win.id} />;
       case "mixer": return <Mixer />;
   case "visualizer": return <Visualizer />;
+       case "sampleBrowser": return <SampleBrowser />;
       default: return <div>Unknown window: {win.kind}</div>;
     }
   }, [win.kind, win.id]);
-
+  
   return (
     <div
       style={{

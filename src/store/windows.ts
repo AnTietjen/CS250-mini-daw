@@ -2,7 +2,7 @@
 // Window manager (draggable, resizable, minimizable) using Zustand.
 import { create } from "zustand";
 
-export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard" | "mixer" | "visualizer";
+export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard" | "mixer" | "visualizer" | "sampleBrowser";
 
 export interface WindowState {
   id: string;           // stable id
@@ -38,8 +38,9 @@ export const useWindows = create<WindowsStore>((set) => ({
     { id: "win-keys", kind: "keyboard", title: "Typing Keyboard", x: 640, y: 340, w: 360, h: 260, z: 4, minimized: false },
     { id: "win-mixer", kind: "mixer", title: "Mixer", x: 1020, y: 120, w: 520, h: 340, z: 5, minimized: false },
     { id: "win-vis", kind: "visualizer", title: "Visualizer", x: 1020, y: 480, w: 520, h: 240, z: 6, minimized: false },
+    { id: "win-sample", kind: "sampleBrowser", title: "Sample Browser", x: 180, y: 180, w: 400, h: 320, z: 7, minimized: false },
   ],
-  nextZ: 7,
+  nextZ: 8,
   bringToFront: (id) => set((s) => {
     const z = s.nextZ;
     return {
@@ -88,5 +89,13 @@ export const useWindows = create<WindowsStore>((set) => ({
     }));
     return id;
   },
+addSampleBrowserWindow: () => {
+  const id = `win-sample-${Math.random().toString(36).slice(2,7)}`;
+  set((s) => ({
+    windows: [...s.windows, { id, kind: "sampleBrowser", title: "Sample Browser", x: 180 + (s.windows.length%4)*40, y: 180 + (s.windows.length%4)*40, w: 400, h: 320, z: s.nextZ, minimized: false }],
+    nextZ: s.nextZ + 1,
+  }));
+  return id;
+},
   closeWindow: (id) => set((s) => ({ windows: s.windows.filter(w => w.id !== id) })),
 }));
