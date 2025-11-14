@@ -22,7 +22,16 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
   const close = useWindows(s => s.closeWindow);
 
   const dragData = useRef<{ offX: number; offY: number; id: string } | null>(null);
-  const sizeData = useRef<{ startW: number; startH: number; startX: number; startY: number; id: string } | null>(null);
+  const sizeData = useRef<{
+    startW: number;
+    startH: number;
+    startX: number; // pointer
+    startY: number; // pointer
+    startLeft: number; // win.x at start
+    startTop: number;  // win.y at start
+    id: string;
+    edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean };
+  } | null>(null);
   const rafMove = useRef<number | null>(null);
   const lastMove = useRef<{ x: number; y: number } | null>(null);
 
@@ -37,15 +46,39 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
         });
       }
     } else if (sizeData.current) {
-      const { startW, startH, startX, startY, id } = sizeData.current;
-      const dw = e.clientX - startX;
-      const dh = e.clientY - startY;
-      // Throttle resize slightly via rAF as well
-      lastMove.current = { x: startW + dw, y: startH + dh } as any;
+      const MIN_W = 200;
+      const MIN_H = 120;
+      const { startW, startH, startX, startY, startLeft, startTop, id, edges } = sizeData.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      let newW = startW;
+      let newH = startH;
+      let newX = startLeft;
+      let newY = startTop;
+
+      if (edges.right) newW = Math.max(MIN_W, startW + dx);
+      if (edges.bottom) newH = Math.max(MIN_H, startH + dy);
+      if (edges.left) {
+        newW = Math.max(MIN_W, startW - dx);
+        // shift x by the amount width decreased vs original
+        newX = startLeft + (startW - newW);
+      }
+      if (edges.top) {
+        newH = Math.max(MIN_H, startH - dy);
+        newY = startTop + (startH - newH);
+      }
+
+      // Throttle move/resize via rAF as well
+      lastMove.current = { x: newW, y: newH, posX: newX, posY: newY } as any;
       if (rafMove.current == null) {
         rafMove.current = requestAnimationFrame(() => {
           rafMove.current = null;
-          if (lastMove.current) resize(id, (lastMove.current as any).x, (lastMove.current as any).y);
+          if (lastMove.current) {
+            const lm: any = lastMove.current;
+            move(id, lm.posX, lm.posY);
+            resize(id, lm.x, lm.y);
+          }
         });
       }
     }
@@ -76,10 +109,22 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
     window.addEventListener("pointerup", endInteraction);
   };
 
-  const startResize = (e: React.PointerEvent) => {
+  const startResize = (
+    e: React.PointerEvent,
+    edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }
+  ) => {
     e.stopPropagation();
     bringToFront(win.id);
-    sizeData.current = { startW: win.w, startH: win.h, startX: e.clientX, startY: e.clientY, id: win.id };
+    sizeData.current = {
+      startW: win.w,
+      startH: win.h,
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: win.x,
+      startTop: win.y,
+      id: win.id,
+      edges,
+    };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", endInteraction);
   };
@@ -180,25 +225,53 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
         </div>
       </div>
       {!win.minimized && (
-        <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        <div style={{ flex: 1, overflow: "auto", padding: 12, position: "relative" }}>
           {content}
+          {/* Resize edges (thicker invisible hit areas) */}
+          <div
+            onPointerDown={(e) => startResize(e, { left: true })}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 8, cursor: "ew-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { right: true })}
+            style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, cursor: "ew-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { top: true })}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, cursor: "ns-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { bottom: true })}
+            style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 8, cursor: "ns-resize" }}
+            title="Resize"
+          />
+          {/* Corner hit areas with appropriate cursors */}
+          <div
+            onPointerDown={(e) => startResize(e, { left: true, top: true })}
+            style={{ position: "absolute", left: 0, top: 0, width: 12, height: 12, cursor: "nwse-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { right: true, top: true })}
+            style={{ position: "absolute", right: 0, top: 0, width: 12, height: 12, cursor: "nesw-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { left: true, bottom: true })}
+            style={{ position: "absolute", left: 0, bottom: 0, width: 12, height: 12, cursor: "nesw-resize" }}
+            title="Resize"
+          />
+          <div
+            onPointerDown={(e) => startResize(e, { right: true, bottom: true })}
+            style={{ position: "absolute", right: 0, bottom: 0, width: 12, height: 12, cursor: "nwse-resize" }}
+            title="Resize"
+          />
         </div>
       )}
-      {!win.minimized && (
-        <div
-          onPointerDown={startResize}
-          style={{
-            position: "absolute",
-            width: 18,
-            height: 18,
-            right: 2,
-            bottom: 2,
-            cursor: "nwse-resize",
-            background: "transparent",
-          }}
-          title="Resize"
-        />
-      )}
+      {/* Legacy corner handle removed; corners covered by hit areas above */}
     </div>
   );
 });

@@ -7,36 +7,42 @@ interface Props {
 }
 
 type SoundKind = "piano" | "sine" | "square";
-type ScaleKind = "chromatic" | "major" | "minor" | "pentatonic-major" | "pentatonic-minor";
 
-// FL-typing style: two rows, left-to-right continuous mapping across the chosen scale
-const KEY_SEQUENCE: string[] = [
-  "z","x","c","v","b","n","m",
-  "a","s","d","f","g","h","j","k","l",
-];
+// Computer keyboard → piano mapping.
+// White keys (lower row):  Z X C V B N M  /  , . /
+// White keys (home row):   A S D F G H J  /  K L ;
+// Black keys above:        W E   T Y U    /  O P
+// This approximates a real piano: asdf = C D E F, WE = C# D#, etc.
+// We treat C as the left-most white key in each row and step chromatically.
+// For each keyboard key, define semitone offset from the base octave C.
+// We keep octaves per row so that row1 & row2 are both valid.
+interface KeyMapEntry { midiOffset: number; label: string; }
 
-function scaleDegrees(kind: ScaleKind): number[] {
-  switch (kind) {
-    case "chromatic": return [0,1,2,3,4,5,6,7,8,9,10,11];
-    case "major": return [0,2,4,5,7,9,11];
-    case "minor": return [0,2,3,5,7,8,10]; // natural minor
-    case "pentatonic-major": return [0,2,4,7,9];
-    case "pentatonic-minor": return [0,3,5,7,10];
-  }
-}
+const KEY_TO_NOTE: Record<string, KeyMapEntry> = {
+  // Home row whites: primary playing row
+  a:  { midiOffset: 0,  label: "C"  },
+  s:  { midiOffset: 2,  label: "D"  },
+  d:  { midiOffset: 4,  label: "E"  },
+  f:  { midiOffset: 5,  label: "F"  },
+  g:  { midiOffset: 7,  label: "G"  },
+  h:  { midiOffset: 9,  label: "A"  },
+  j:  { midiOffset: 11, label: "B"  },
+  k:  { midiOffset: 12, label: "C" },
+  l:  { midiOffset: 14, label: "D" },
+  ";": { midiOffset: 16, label: "E" },
 
-// Map a key index in KEY_SEQUENCE to a semitone offset from root based on scale degrees
-function keyIndexToSemitone(idx: number, kind: ScaleKind): number {
-  const deg = scaleDegrees(kind);
-  const perOct = deg.length; // how many keys per octave
-  const octaveOffset = Math.floor(idx / perOct);
-  const degree = deg[idx % perOct];
-  return octaveOffset * 12 + degree; // semitone offset from root
-}
+  // Black keys above: like a real piano (W/E = C#/D#, T/Y/U = F#/G#/A#, O/P = C#/D# in next octave)
+  w:  { midiOffset: 1,  label: "C#" },
+  e:  { midiOffset: 3,  label: "D#" },
+  t:  { midiOffset: 6,  label: "F#" },
+  y:  { midiOffset: 8,  label: "G#" },
+  u:  { midiOffset: 10, label: "A#" },
+  o:  { midiOffset: 13, label: "C#" },
+  p:  { midiOffset: 15, label: "D#" },
+};
 
 const TypingKeyboard: React.FC<Props> = ({ instanceId }) => {
   const [sound, setSound] = useState<SoundKind>("piano");
-  const [scale, setScale] = useState<ScaleKind>("chromatic");
   const [root, setRoot] = useState<number>(0); // 0=C, 1=C#, ... 11=B
   const [octave, setOctave] = useState(4);
   const pressed = useRef<Set<string>>(new Set());
@@ -86,8 +92,8 @@ const TypingKeyboard: React.FC<Props> = ({ instanceId }) => {
       return;
     }
 
-    const idx = KEY_SEQUENCE.indexOf(key);
-    if (idx === -1) return;
+  const entry = KEY_TO_NOTE[key];
+  if (!entry) return;
     if (pressed.current.has(key)) return; // ignore repeats
     pressed.current.add(key);
     e.preventDefault();
@@ -98,8 +104,8 @@ const TypingKeyboard: React.FC<Props> = ({ instanceId }) => {
       engine.startAudio();
     }
 
-    // Root is C (0) for now. Map across selected scale.
-    const semiFromRoot = keyIndexToSemitone(idx, scale);
+  // Root is C (0) by default; KEY_TO_NOTE is a chromatic layout like a real piano.
+  const semiFromRoot = entry.midiOffset;
     const midi = (octave + 1) * 12 + root + semiFromRoot; // root inside octave
     engine.noteOn(instanceId, midi, 0.9);
     sounding.current.set(key, midi);
@@ -139,18 +145,17 @@ const TypingKeyboard: React.FC<Props> = ({ instanceId }) => {
       window.removeEventListener("blur", onBlur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale, octave, root, instanceId]);
+  }, [octave, root, instanceId]);
 
   // Update engine when UI sound changes
   useEffect(() => { applySound(sound); }, [sound]);
 
   // Compute how many octaves we need to visually display so all typing keys map within the visible piano
   const requiredOctaves = useMemo(() => {
-    const lastIdx = KEY_SEQUENCE.length - 1; // index of last typing key
-    const maxSemi = keyIndexToSemitone(lastIdx, scale); // semitones from root
-    // Include root offset so the visible C-anchored piano spans all typing notes
+    // Find the highest semitone offset we ever use from the root
+    const maxSemi = Object.values(KEY_TO_NOTE).reduce((acc, e) => Math.max(acc, e.midiOffset), 0);
     return Math.max(1, Math.ceil((root + maxSemi + 1) / 12));
-  }, [scale, root]);
+  }, [root]);
 
   const help = useMemo(() => (
     <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.4 }}>
@@ -166,14 +171,6 @@ const TypingKeyboard: React.FC<Props> = ({ instanceId }) => {
           <option value="piano">Piano</option>
           <option value="sine">Sine</option>
           <option value="square">Square</option>
-        </select>
-  <label style={{ ...labelStyle, marginLeft: 8 }}>Scale</label>
-        <select value={scale} onChange={(e) => setScale(e.target.value as ScaleKind)} style={selectStyle}>
-          <option value="chromatic">Chromatic (all keys)</option>
-          <option value="major">Major</option>
-          <option value="minor">Minor</option>
-          <option value="pentatonic-major">Pentatonic Major</option>
-          <option value="pentatonic-minor">Pentatonic Minor</option>
         </select>
         <label style={{ ...labelStyle, marginLeft: 8 }}>Root</label>
         <select value={root} onChange={(e) => setRoot(Number(e.target.value))} style={selectStyle}>

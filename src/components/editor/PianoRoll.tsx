@@ -4,7 +4,7 @@ import { engine } from "../../audio/engine";
 import { useElementSize } from "../../hooks/useElementSize";
 // import { usePiano } from "../../store/piano";
 import { usePianoInstances } from "../../store/pianoInstances";
-import { usePianoView } from "../../store/pianoView.ts";
+import { usePianoView } from "../../store/pianoView";
 import { useTheme } from "../../store/theme";
 import { useSnap, SNAP_TO_SUBSTEPS } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";

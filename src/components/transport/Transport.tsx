@@ -1,5 +1,5 @@
 // src/components/transport/Transport.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { engine } from "../../audio/engine";
 import { useSnap } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";
@@ -14,6 +14,9 @@ export default function Transport() {
   const primary = useTheme(s => s.primary);
   const setPrimary = useTheme(s => s.setPrimary);
   const [metOn, setMetOn] = useState(engine.getMetronomeEnabled());
+  const [tapBpm, setTapBpm] = useState<number | null>(null);
+  const tapTimes = useRef<number[]>([]);
+  const tapTimeout = useRef<number | null>(null);
   const snap = useSnap(s => s.snap);
   const setSnap = useSnap(s => s.setSnap);
   const playing = usePlayhead(s => s.playing);
@@ -75,11 +78,54 @@ export default function Transport() {
             Tempo: <strong>{bpm}</strong>
             <input
               type="range"
-              min={60}
-              max={180}
+              min={30}
+              max={300}
               value={bpm}
               onChange={(e) => setBpm(parseInt(e.target.value, 10))}
             />
+            <input
+              type="number"
+              min={30}
+              max={300}
+              value={bpm}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (!Number.isNaN(v)) setBpm(Math.max(30, Math.min(300, Math.round(v))));
+              }}
+              style={{ width: 64, marginLeft: 8, padding: '2px 6px', borderRadius: 6 }}
+              title="Type tempo (BPM)"
+            />
+            <button
+              onClick={() => {
+                // Tap tempo: record time, compute from recent taps
+                const now = Date.now();
+                // Clear timeout that would reset taps
+                if (tapTimeout.current) window.clearTimeout(tapTimeout.current);
+                tapTimes.current.push(now);
+                // Keep only last 8 taps
+                if (tapTimes.current.length > 8) tapTimes.current.shift();
+                // Need at least 2 taps
+                if (tapTimes.current.length >= 2) {
+                  const intervals: number[] = [];
+                  for (let i = 1; i < tapTimes.current.length; i++) intervals.push(tapTimes.current[i] - tapTimes.current[i - 1]);
+                  const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                  const computed = Math.round(60000 / avg);
+                  const clamped = Math.max(30, Math.min(300, computed));
+                  setBpm(clamped);
+                  setTapBpm(clamped);
+                }
+                // Reset tap buffer after 2 seconds of inactivity
+                tapTimeout.current = window.setTimeout(() => {
+                  tapTimes.current = [];
+                  tapTimeout.current = null;
+                }, 2000);
+              }}
+              style={{ marginLeft: 8, padding: '6px 8px', borderRadius: 6 }}
+              title="Tap tempo"
+            >
+              Tap
+            </button>
+            {tapBpm ? <span style={{ marginLeft: 8, fontSize: 12, opacity: .8 }}>Tapped: <strong>{tapBpm}</strong> BPM</span> : null}
           </label>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
