@@ -10,6 +10,9 @@ import TypingKeyboard from "../keyboard/TypingKeyboard";
 import Mixer from "../mixer/ChannelMixer";
 import Visualizer from "../visualizer/Visualizer";
 import SampleBrowser from "../rack/SampleBrowser";
+import * as PlaylistModule from "../playlist/Playlist.tsx";
+// In some dev builds the default export may be present under .default. Normalize it.
+const Playlist = (PlaylistModule as any).default || (PlaylistModule as any);
 
 interface Props { id: string }
 
@@ -132,32 +135,34 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
   // Create/delete piano instance tied to this window if it's a pianoRoll
   const createInstance = usePianoInstances(s => s.createInstance);
   const deleteInstance = usePianoInstances(s => s.deleteInstance);
-  const getInst = usePianoInstances(s => s.instances[win.id]);
+  const instId = (win as any).instanceId ?? win.id;
+  const getInst = usePianoInstances(s => s.instances[instId]);
   useEffect(() => {
     if (win.kind === "pianoRoll") {
-      createInstance(win.id);
+      createInstance(instId);
       // Ensure engine synth and initialize with stored params if present
       engine.ensureInstanceSynth(win.id);
       const wave = getInst?.wave ?? 'sawtooth';
       const volume = getInst?.volume ?? 0.8;
-      if (wave === 'piano') engine.setInstanceToPianoSampler(win.id);
-      else engine.setInstanceToBasicSynth(win.id, wave as any);
-      engine.setInstanceVolume(win.id, volume);
+      if (wave === 'piano') engine.setInstanceToPianoSampler(instId);
+      else engine.setInstanceToBasicSynth(instId, wave as any);
+      engine.setInstanceVolume(instId, volume);
     }
     return () => {
       if (win.kind === "pianoRoll") {
-        deleteInstance(win.id);
-        engine.removePianoInstance(win.id);
+        deleteInstance(instId);
+        engine.removePianoInstance(instId);
       }
     };
-  }, [win.kind, win.id, createInstance, deleteInstance]);
+  }, [win.kind, instId, createInstance, deleteInstance]);
 
   const content = useMemo(() => {
     switch (win.kind) {
       case "stepSequencer": return <StepSequencer />;
-      case "pianoRoll": return <PianoRoll instanceId={win.id} />;
+      case "pianoRoll": return <PianoRoll instanceId={instId} />;
       case "settings": return <Transport />;
       case "keyboard": return <TypingKeyboard instanceId={win.id} />;
+      case "playlist": return <Playlist />;
       case "mixer": return <Mixer />;
   case "visualizer": return <Visualizer />;
        case "sampleBrowser": return <SampleBrowser />;

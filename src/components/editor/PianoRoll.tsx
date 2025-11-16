@@ -27,9 +27,11 @@ const ROW_PITCHES = [...PITCH_ASC].reverse();
 
 const isBlackKey = (p: string) => p.includes("#");
 
+const EMPTY_NOTES: ReadonlyArray<any> = Object.freeze([]);
+
 export default function PianoRoll({ instanceId }: { instanceId?: string }) {
   const id = instanceId || 'default';
-  const notes = usePianoInstances(s => s.instances[id]?.notes || []);
+  const notes = usePianoInstances(s => s.instances[id]?.notes ?? EMPTY_NOTES);
   const primary = useTheme(s => s.primary);
   const addNote = usePianoInstances(s => s.addNote);
   const resizeNote = usePianoInstances(s => s.resizeNote);

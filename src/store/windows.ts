@@ -2,7 +2,7 @@
 // Window manager (draggable, resizable, minimizable) using Zustand.
 import { create } from "zustand";
 
-export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard" | "mixer" | "visualizer" | "sampleBrowser";
+export type WindowKind = "stepSequencer" | "pianoRoll" | "settings" | "keyboard" | "mixer" | "visualizer" | "sampleBrowser" | "playlist";
 
 export interface WindowState {
   id: string;           // stable id
@@ -14,6 +14,7 @@ export interface WindowState {
   h: number;            // height (px)
   z: number;            // z-index stacking
   minimized: boolean;   // collapsed state
+  instanceId?: string;  // tie a window to an existing piano instance when present
 }
 
 interface WindowsStore {
@@ -23,11 +24,13 @@ interface WindowsStore {
   resize: (id: string, w: number, h: number) => void;
   toggleMin: (id: string) => void;
   nextZ: number; // incremental counter
-  addPianoWindow: () => string; // returns id
+  addPianoWindow: (instanceId?: string) => string; // returns id, optional instance id to open
   closeWindow: (id: string) => void;
   addKeyboardWindow: () => string;
   addMixerWindow: () => string;
   addVisualizerWindow: () => string;
+  addStepSequencerWindow: () => string;
+  addPlaylistWindow: () => string;
 }
 
 export const useWindows = create<WindowsStore>((set) => ({
@@ -57,10 +60,10 @@ export const useWindows = create<WindowsStore>((set) => ({
   toggleMin: (id) => set((s) => ({
     windows: s.windows.map(win => win.id === id ? { ...win, minimized: !win.minimized } : win)
   })),
-  addPianoWindow: () => {
+  addPianoWindow: (instanceId?: string) => {
     const id = `win-piano-${Math.random().toString(36).slice(2,7)}`;
     set((s) => ({
-      windows: [...s.windows, { id, kind: "pianoRoll", title: "Piano Roll", x: 60 + (s.windows.length%4)*40, y: 100 + (s.windows.length%4)*40, w: 560, h: 360, z: s.nextZ, minimized: false }],
+      windows: [...s.windows, { id, kind: "pianoRoll", title: "Piano Roll", x: 60 + (s.windows.length%4)*40, y: 100 + (s.windows.length%4)*40, w: 560, h: 360, z: s.nextZ, minimized: false, instanceId }],
       nextZ: s.nextZ + 1,
     }));
     return id;
@@ -85,6 +88,22 @@ export const useWindows = create<WindowsStore>((set) => ({
     const id = `win-vis-${Math.random().toString(36).slice(2,7)}`;
     set((s) => ({
       windows: [...s.windows, { id, kind: "visualizer", title: "Visualizer", x: 140 + (s.windows.length%4)*40, y: 160 + (s.windows.length%4)*40, w: 520, h: 240, z: s.nextZ, minimized: false }],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+  addStepSequencerWindow: () => {
+    const id = `win-step-${Math.random().toString(36).slice(2,7)}`;
+    set((s) => ({
+      windows: [...s.windows, { id, kind: "stepSequencer", title: "Step Sequencer", x: 40 + (s.windows.length%4)*40, y: 120 + (s.windows.length%4)*40, w: 520, h: 240, z: s.nextZ, minimized: false }],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+  addPlaylistWindow: () => {
+    const id = `win-playlist-${Math.random().toString(36).slice(2,7)}`;
+    set((s) => ({
+      windows: [...s.windows, { id, kind: "playlist", title: "Playlist", x: 260 + (s.windows.length%4)*30, y: 200 + (s.windows.length%4)*30, w: 720, h: 300, z: s.nextZ, minimized: false }],
       nextZ: s.nextZ + 1,
     }));
     return id;

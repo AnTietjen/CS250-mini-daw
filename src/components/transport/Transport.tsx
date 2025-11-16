@@ -21,6 +21,7 @@ export default function Transport() {
   const setSnap = useSnap(s => s.setSnap);
   const playing = usePlayhead(s => s.playing);
   const addPianoWindow = useWindows(s => s.addPianoWindow);
+  const addPlaylistWindow = useWindows(s => s.addPlaylistWindow);
 
   useEffect(() => {
     // keep engine tempo in sync with store
@@ -125,6 +126,11 @@ export default function Transport() {
             >
               Tap
             </button>
+            <button
+              onClick={() => { addPlaylistWindow(); }}
+              style={{ padding: '6px 10px', borderRadius: 6 }}
+              title="Add Playlist"
+            >+ Playlist</button>
             {tapBpm ? <span style={{ marginLeft: 8, fontSize: 12, opacity: .8 }}>Tapped: <strong>{tapBpm}</strong> BPM</span> : null}
           </label>
 
