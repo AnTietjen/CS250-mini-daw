@@ -1,6 +1,8 @@
 // src/App.tsx
 import { useWindows } from "./store/windows";
 import { WindowFrame } from "./components/windows/WindowFrame";
+import PlaylistBridge from './components/playlist/PlaylistBridge';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 import SampleBrowser from "./components/rack/SampleBrowser";
 import Transport from "./components/transport/Transport";
@@ -117,6 +119,9 @@ export default function App() {
         </div>
       </header>
 
+      {/* Bridge that feeds playlist arrangement into engine */}
+      <PlaylistBridge />
+
       {/* Floating Windows Workspace */}
       <div
         style={{
@@ -128,9 +133,11 @@ export default function App() {
           overflow: "hidden",
         }}
       >
-        {floating.map((w) => (
-          <WindowFrame key={w.id} id={w.id} />
-        ))}
+        <ErrorBoundary>
+          {floating.map((w) => (
+            <WindowFrame key={w.id} id={w.id} />
+          ))}
+        </ErrorBoundary>
       </div>
     </div>
   );

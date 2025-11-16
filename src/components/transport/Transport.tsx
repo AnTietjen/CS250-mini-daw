@@ -5,6 +5,7 @@ import { useSnap } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";
 import { useProject } from "../../store/project";
 import { useTheme, PRESET_COLORS } from "../../store/theme";
+import { useWindows } from "../../store/windows";
 
 export default function Transport() {
   const [audioReady, setAudioReady] = useState(false);
@@ -19,6 +20,7 @@ export default function Transport() {
   const snap = useSnap((s) => s.snap);
   const setSnap = useSnap((s) => s.setSnap);
   const playing = usePlayhead((s) => s.playing);
+  const addPlaylistWindow = useWindows(s => s.addPlaylistWindow);
 
   useEffect(() => {
     engine.setTempo(bpm);
@@ -180,6 +182,13 @@ export default function Transport() {
             />
           ))}
         </div>
+        <div style={{ width: 1, height: 20, background: '#334155', margin: '0 8px' }} />
+        <button
+          onClick={() => addPlaylistWindow()}
+          style={{ padding: "6px 10px", borderRadius: 6, background: "#334155", border: "1px solid #64748b", color: "#e2e8f0", fontSize: 12, cursor: "pointer" }}
+        >
+          + Playlist
+        </button>
       </div>
     </section>
   );

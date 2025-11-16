@@ -19,7 +19,7 @@ export default function StepSequencer() {
         name: l.name,
         source: l.source,
         pattern: l.pattern.slice(0, SUBSTEPS_PER_BAR),
-      }))
+      })) as any
     );
   }, [drumLanes]);
 

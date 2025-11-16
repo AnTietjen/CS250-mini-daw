@@ -9,7 +9,8 @@ export type WindowKind =
   | "keyboard"
   | "mixer"
   | "visualizer"
-  | "sampleBrowser";
+  | "sampleBrowser"
+  | "playlist";
 
 export interface WindowState {
   id: string;
@@ -21,6 +22,8 @@ export interface WindowState {
   h: number;
   z: number;
   minimized: boolean;
+  instanceId?: string;
+  patternId?: string;
 }
 
 interface WindowsStore {
@@ -33,10 +36,11 @@ interface WindowsStore {
   closeWindow: (id: string) => void;
 
   // Creation helpers
-  addStepSequencerWindow: () => string;
-  addPianoWindow: () => string;
+  addStepSequencerWindow: (patternId?: string) => string;
+  addPianoWindow: (instanceId?: string) => string;
   addKeyboardWindow: () => string;
   addMixerWindow: () => string;
+  addPlaylistWindow: () => string;
 
   // Query / bulk helpers
   closeByKind: (kind: WindowKind) => void;
@@ -70,10 +74,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   resize: (id, w, h) =>
     set((s) => ({
-      windows: s.windows.map((w) =>
-        w.id === id
-          ? { ...w, w: Math.max(200, w), h: Math.max(120, h) }
-          : w
+      windows: s.windows.map((win) =>
+        win.id === id
+          ? { ...win, w: Math.max(200, w), h: Math.max(120, h) }
+          : win
       ),
     })),
 
@@ -89,29 +93,7 @@ export const useWindows = create<WindowsStore>((set, get) => ({
       windows: s.windows.filter((w) => w.id !== id),
     })),
 
-  addStepSequencerWindow: () => {
-    const id = makeId("win-step");
-    set((s) => ({
-      windows: [
-        ...s.windows,
-        {
-          id,
-          kind: "stepSequencer",
-            title: "Step Sequencer",
-          x: BASE_OFFSET_X + 40,
-          y: BASE_OFFSET_Y + 40,
-          w: 560,
-          h: 240,
-          z: s.nextZ,
-          minimized: false,
-        },
-      ],
-      nextZ: s.nextZ + 1,
-    }));
-    return id;
-  },
-
-  addPianoWindow: () => {
+  addPianoWindow: (instanceId?: string) => {
     const id = makeId("win-piano");
     set((s) => ({
       windows: [
@@ -126,6 +108,7 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           h: 360,
           z: s.nextZ,
           minimized: false,
+          instanceId,
         },
       ],
       nextZ: s.nextZ + 1,
@@ -168,6 +151,51 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           y: BASE_OFFSET_Y + 180,
           w: 520,
           h: 340,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  addStepSequencerWindow: (patternId?: string) => {
+    const id = makeId("win-step");
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "stepSequencer",
+          title: "Step Sequencer",
+          x: BASE_OFFSET_X + 40,
+          y: BASE_OFFSET_Y + 40,
+          w: 560,
+          h: 240,
+          z: s.nextZ,
+          minimized: false,
+          patternId,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  addPlaylistWindow: () => {
+    const id = makeId("win-playlist");
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "playlist",
+          title: "Playlist",
+          x: BASE_OFFSET_X + 60,
+          y: BASE_OFFSET_Y + 60,
+          w: 720,
+          h: 300,
           z: s.nextZ,
           minimized: false,
         },
