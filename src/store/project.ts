@@ -1,20 +1,39 @@
 // src/store/project.ts
 import { create } from "zustand";
 
-const DRUM_ROWS = 3;   // Kick, Snare, Hat
-const SUBSTEPS_PER_BAR = 48; // 12 per beat * 4 beats
+export const SUBSTEPS_PER_BAR = 48; // 12 per beat * 4 beats
+export const MAX_DRUM_LANES = 10;   // hard limit for drum lanes
 
-const PIANO_ROWS = 12; // chromatic (one octave)
+// Drum lane can be a built-in synth lane (kick/snare/hat) or a sample-based lane
+export type DrumLane =
+  | {
+      id: string;
+      name: string;
+      source: { type: "builtIn"; kind: "kick" | "snare" | "hat" };
+      pattern: boolean[]; // length 48
+    }
+  | {
+      id: string;
+      name: string;
+      source: { type: "sample"; url: string };
+      pattern: boolean[]; // length 48
+    };
+
+function makeId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 type ProjectState = {
   bpm: number;
 
-  // Drums (3 x 48 substeps per bar). A hit triggers at the substep index when true.
-  drumPattern: boolean[][];
-  toggleDrumCell: (row: number, cellIndex: number, substepsPerCell: number) => void; // maps cell to substep start
-  setDrumPattern: (pattern: boolean[][]) => void;
+  // Dynamic drum lanes (max 10)
+  drumLanes: DrumLane[];
+  addDrumLaneFromSample: (sample: { name: string; url: string }) => boolean; // false if at cap
+  removeDrumLane: (index: number) => void;
+  toggleDrumCell: (laneIndex: number, cellIndex: number, substepsPerCell: number) => void;
+  setLanePattern: (laneIndex: number, pattern: boolean[]) => void;
 
-  // Piano roll grid (legacy, currently unused)
+  // Legacy synth grid (unchanged)
   synthGrid: boolean[][];
   toggleSynthCell: (row: number, step: number) => void;
   setSynthGrid: (grid: boolean[][]) => void;
@@ -22,29 +41,67 @@ type ProjectState = {
   setBpm: (bpm: number) => void;
 };
 
-export const useProject = create<ProjectState>((set) => ({
+const PIANO_ROWS = 12;
+
+export const useProject = create<ProjectState>((set, get) => ({
   bpm: 110,
 
-  drumPattern: Array.from({ length: DRUM_ROWS }, () => Array(SUBSTEPS_PER_BAR).fill(false)),
-  toggleDrumCell: (row, cellIndex, substepsPerCell) =>
+  // Start with 3 built-in lanes so existing “Kick/Snare/Hat” continue to work.
+  drumLanes: [
+    { id: makeId("lane"), name: "Kick",  source: { type: "builtIn", kind: "kick"  }, pattern: Array(SUBSTEPS_PER_BAR).fill(false) },
+    { id: makeId("lane"), name: "Snare", source: { type: "builtIn", kind: "snare" }, pattern: Array(SUBSTEPS_PER_BAR).fill(false) },
+    { id: makeId("lane"), name: "Hat",   source: { type: "builtIn", kind: "hat"   }, pattern: Array(SUBSTEPS_PER_BAR).fill(false) },
+  ],
+
+  addDrumLaneFromSample: (sample) => {
+    const lanes = get().drumLanes;
+    if (lanes.length >= MAX_DRUM_LANES) return false;
+    const lane: DrumLane = {
+      id: makeId("lane"),
+      name: sample.name || "Sample",
+      source: { type: "sample", url: sample.url },
+      pattern: Array(SUBSTEPS_PER_BAR).fill(false),
+    };
+    set({ drumLanes: [...lanes, lane] });
+    return true;
+  },
+
+  removeDrumLane: (index) =>
     set((s) => {
-      const pattern = s.drumPattern.map((r) => r.slice());
+      if (index < 0 || index >= s.drumLanes.length) return s;
+      const next = s.drumLanes.slice();
+      next.splice(index, 1);
+      return { drumLanes: next };
+    }),
+
+  toggleDrumCell: (laneIndex, cellIndex, substepsPerCell) =>
+    set((s) => {
+      const lanes = s.drumLanes.slice();
+      const lane = lanes[laneIndex];
+      if (!lane) return s;
+      const pattern = lane.pattern.slice();
+      // Map UI cell to substep range
       const startSub = Math.max(0, Math.min(SUBSTEPS_PER_BAR - 1, Math.round(cellIndex * substepsPerCell)));
       const endSub = Math.min(SUBSTEPS_PER_BAR - 1, startSub + substepsPerCell - 1);
-      if (pattern[row]) {
-        const anyInCell = pattern[row].slice(startSub, endSub + 1).some(Boolean);
-        if (anyInCell) {
-          // Clear all hits in this cell range
-          for (let i = startSub; i <= endSub; i++) pattern[row][i] = false;
-        } else {
-          // Place a single hit at the cell's start
-          pattern[row][startSub] = true;
-        }
+      const anyInCell = pattern.slice(startSub, endSub + 1).some(Boolean);
+      if (anyInCell) {
+        for (let i = startSub; i <= endSub; i++) pattern[i] = false;
+      } else {
+        pattern[startSub] = true;
       }
-      return { drumPattern: pattern };
+      lanes[laneIndex] = { ...lane, pattern };
+      return { drumLanes: lanes };
     }),
-  setDrumPattern: (pattern) => set({ drumPattern: pattern }),
 
+  setLanePattern: (laneIndex, pattern) =>
+    set((s) => {
+      const lanes = s.drumLanes.slice();
+      if (!lanes[laneIndex]) return s;
+      lanes[laneIndex] = { ...lanes[laneIndex], pattern: pattern.slice(0, SUBSTEPS_PER_BAR) };
+      return { drumLanes: lanes };
+    }),
+
+  // Legacy synth grid
   synthGrid: Array.from({ length: PIANO_ROWS }, () => Array(16).fill(false)),
   toggleSynthCell: (row, step) =>
     set((s) => {

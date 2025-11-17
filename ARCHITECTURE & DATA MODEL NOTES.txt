@@ -1,3 +1,7 @@
+If running doesn't work, try
+
+npx vite --host 0.0.0.0 --port 5173
+
 ARCHITECTURE
 
 src/
