@@ -92,7 +92,6 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     set((s) => ({
       windows: s.windows.filter((w) => w.id !== id),
     })),
-
   addPianoWindow: (instanceId?: string) => {
     const id = makeId("win-piano");
     set((s) => ({

@@ -149,16 +149,17 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
       engine.setInstanceVolume(instId, volume);
     }
     return () => {
-      if (win.kind === "pianoRoll") {
-        deleteInstance(instId);
-        engine.removePianoInstance(instId);
-      }
+      // Do NOT delete instance on window close; persist it for playlist playback
+      // if (win.kind === "pianoRoll") {
+      //   deleteInstance(instId);
+      //   engine.removePianoInstance(instId);
+      // }
     };
   }, [win.kind, instId, createInstance, deleteInstance]);
 
   const content = useMemo(() => {
     switch (win.kind) {
-      case "stepSequencer": return <StepSequencer />;
+      case "stepSequencer": return <StepSequencer patternId={(win as any).patternId} />;
       case "pianoRoll": return <PianoRoll instanceId={instId} />;
       case "settings": return <Transport />;
       case "keyboard": return <TypingKeyboard instanceId={win.id} />;

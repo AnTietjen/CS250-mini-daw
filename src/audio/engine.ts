@@ -30,9 +30,27 @@ class Engine {
 
   // High-res driver: 48 substeps per bar (4/4)
   private stepSeq: Tone.Sequence<number> | null = null;
+  private arrangementRepeat: number | null = null; // transport id
+  private arrangementLengthSubsteps = 48; // default 1 bar
+  private globalSubstep = 0;
+  private arrangementNotes: { id: string; pitch: string; pitchIndex: number; start: number; length: number; instanceId: string }[] = [];
+  private arrangementNotesByStart: Record<number, { id: string; pitch: string; pitchIndex: number; start: number; length: number; instanceId: string }[]> = {};
+  private arrangementDrumBars: Record<number, string[]> = {};
 
   // Current lanes (order matters)
-  private drumLanes: EngineLane[] = [];
+  // private drumLanes: EngineLane[] = [];
+
+  // Patterns
+  private drumPatterns: Record<string, boolean[][]> = {
+    'drums': [
+      Array(48).fill(false), // kick
+      Array(48).fill(false), // snare
+      Array(48).fill(false), // hat
+    ]
+  };
+  // Legacy single pattern accessor
+  private get drumPattern() { return this.drumPatterns['drums']; }
+  private set drumPattern(p: boolean[][]) { this.drumPatterns['drums'] = p; }
 
   // --- Piano roll (unchanged) ---
   private lead: Tone.PolySynth | null = null;
@@ -131,60 +149,8 @@ class Engine {
     this.noiseEnv.connect(this.noiseGain);
     this.noiseGain.connect(this.limiter);
 
-    // High-resolution driver
-    this.stepSeq = new Tone.Sequence(
-      (time, stepIx) => {
-        try {
-          usePlayhead.getState().setSubstep(stepIx % 48);
-        } catch {}
-
-        // Drums: iterate all lanes
-        for (const lane of this.drumLanes) {
-          if (!lane.pattern[stepIx]) continue;
-          if (lane.source.type === "builtIn") {
-            switch (lane.source.kind) {
-              case "kick":
-                this.kick?.triggerAttackRelease("C2", "8n", time);
-                break;
-              case "snare":
-                this.snare?.triggerAttackRelease("16n", time);
-                break;
-              case "hat":
-                this.hat?.triggerAttackRelease("32n", time);
-                break;
-            }
-          } else {
-            const entry = this.samplePlayers.get(lane.id);
-            if (entry) {
-              try {
-                entry.player.start(time);
-              } catch {}
-            }
-          }
-        }
-
-        // Piano roll notes
-        const starts = this.synthNotesByStart[stepIx];
-        if (starts && starts.length) {
-          const bpm = Tone.Transport.bpm.value;
-          const secondsPerBeat = 60 / bpm;
-          for (const n of starts) {
-            const clampedLen = Math.max(1, n.length);
-            const durSeconds = secondsPerBeat * (clampedLen / 12);
-            const instEntry = this.leadSynths[n.instanceId] || this.leadSynths["default"];
-            try {
-              if ((instEntry as any).synth) (instEntry as any).synth.triggerAttackRelease(n.pitch, durSeconds, time);
-              else if ((instEntry as any).sampler) (instEntry as any).sampler.triggerAttackRelease(n.pitch, durSeconds, time);
-              if (this.noiseEnv && this.noiseGain && this.noiseGain.gain.value > 0) {
-                this.noiseEnv.triggerAttackRelease(durSeconds, time);
-              }
-            } catch {}
-          }
-        }
-      },
-      Array.from({ length: 48 }, (_, i) => i),
-      "48n"
-    ).start(0);
+    // High-resolution driver replaced by arrangement-aware repeat callback
+    this.setupDriver();
 
     Tone.Transport.bpm.value = 110;
     this.initialized = true;
@@ -265,21 +231,21 @@ class Engine {
       }
     }
     // Store lanes (clone patterns, clamp to 48)
-    this.drumLanes = lanes.map((l) => ({
-      ...l,
-      pattern: (l.pattern || []).slice(0, 48),
-    }));
+    // this.drumLanes = lanes.map((l) => ({
+    //   ...l,
+    //   pattern: (l.pattern || []).slice(0, 48),
+    // }));
   }
 
-  // Legacy (no-op compatibility): maps 3 rows into built-ins if someone still calls it
-  setDrumPattern(pattern: boolean[][]) {
-    const safe = [0, 1, 2].map((r) => (pattern[r] ? pattern[r].slice(0, 48) : Array(48).fill(false)));
-    const lanes: EngineLane[] = [
-      { id: "builtin-kick", name: "Kick", source: { type: "builtIn", kind: "kick" }, pattern: safe[0] },
-      { id: "builtin-snare", name: "Snare", source: { type: "builtIn", kind: "snare" }, pattern: safe[1] },
-      { id: "builtin-hat", name: "Hat", source: { type: "builtIn", kind: "hat" }, pattern: safe[2] },
-    ];
-    this.setDrumLanes(lanes);
+  setDrumPattern(idOrPattern: string | boolean[][], pattern?: boolean[][]) {
+    if (typeof idOrPattern === 'string' && pattern) {
+      const safe = [0, 1, 2].map((r) => (pattern[r] ? pattern[r].slice(0, 48) : Array(48).fill(false)));
+      this.drumPatterns[idOrPattern] = safe as [boolean[], boolean[], boolean[]];
+    } else if (Array.isArray(idOrPattern)) {
+      // Legacy single pattern
+      const safe = [0, 1, 2].map((r) => (idOrPattern[r] ? idOrPattern[r].slice(0, 48) : Array(48).fill(false)));
+      this.drumPatterns['drums'] = safe as [boolean[], boolean[], boolean[]];
+    }
   }
 
   // ===== Piano roll (unchanged) =====
@@ -475,6 +441,135 @@ class Engine {
       if ((entry as any).synth) (entry as any).synth.triggerRelease(freq);
       else (entry as any).sampler.triggerRelease(freq);
     } catch {}
+  }
+
+  // Build arrangement index from current instance notes & provided clips mapping
+  rebuildArrangementFromPlaylist(clips: { id: string; sourceKind: string; sourceId: string; startBar: number; lengthBars: number; muted?: boolean; }[]) {
+    // Expand piano instance notes across bars; drums handled dynamically each tick.
+    const notes: typeof this.arrangementNotes = [];
+    // reset drum map
+    this.arrangementDrumBars = {};
+    for (const clip of clips) {
+      if (clip.muted) continue;
+      if (clip.sourceKind === 'piano') {
+        const instNotes = this.instanceNotes[clip.sourceId];
+        if (!instNotes || !instNotes.length) continue;
+        const base = clip.startBar * 48;
+        const clipLenSub = clip.lengthBars * 48;
+        for (const n of instNotes) {
+          const absStart = base + n.start;
+          if (n.start >= clipLenSub) continue; // starts outside clip length
+          const remaining = clipLenSub - n.start;
+            const len = Math.min(n.length, remaining);
+          notes.push({ id: `${clip.id}:${n.id}`, pitch: n.pitch, pitchIndex: n.pitchIndex, start: absStart, length: len, instanceId: clip.sourceId });
+        }
+      }
+      if (clip.sourceKind === 'drums') {
+        for (let b = clip.startBar; b < clip.startBar + clip.lengthBars; b++) {
+          (this.arrangementDrumBars[b] ||= []).push(clip.sourceId);
+        }
+      }
+    }
+    this.arrangementNotes = notes.sort((a,b)=>a.start-b.start||a.pitchIndex-b.pitchIndex);
+    const by: Record<number, typeof this.arrangementNotes> = {} as any;
+    for (const n of this.arrangementNotes) (by[n.start] ||= []).push(n);
+    this.arrangementNotesByStart = by;
+    // Reconfigure driver to use arrangement when clips present, or fallback
+    this.setupDriver();
+  }
+  setArrangementLengthBars(bars: number) {
+    this.arrangementLengthSubsteps = Math.max(48, Math.round(bars * 48));
+  }
+  private setupDriver() {
+    // Dispose existing
+    if (this.stepSeq) { try { this.stepSeq.dispose(); } catch {} this.stepSeq = null; }
+    if (this.arrangementRepeat != null) { Tone.Transport.clear(this.arrangementRepeat); this.arrangementRepeat = null; }
+    this.globalSubstep = 0;
+    // If playlist arrangement is present, use the arrangement driver; otherwise fall back to legacy stepSeq
+    // If we have arrangement notes or drum bars, use arrangement mode
+    const hasArrangement = this.arrangementNotes.length > 0 || Object.keys(this.arrangementDrumBars).length > 0;
+    
+    if (hasArrangement) {
+      this.arrangementRepeat = Tone.Transport.scheduleRepeat((time) => {
+        const step = this.globalSubstep;
+        const bar = Math.floor(step / 48);
+        const local = step % 48;
+        try {
+          const ph = usePlayhead.getState();
+          ph.setSubstep(local);
+          ph.setBar(bar);
+        } catch {}
+        // Drums: trigger if a drum clip is active on this bar
+        const activeDrumIds = this.arrangementDrumBars[bar];
+        if (activeDrumIds && activeDrumIds.length) {
+          // Mix all active drum patterns for this step
+          let k=false, s=false, h=false;
+          for (const id of activeDrumIds) {
+            const pat = this.drumPatterns[id];
+            if (pat) {
+              if (pat[0][local]) k = true;
+              if (pat[1][local]) s = true;
+              if (pat[2][local]) h = true;
+            }
+          }
+          if (k) this.kick?.triggerAttackRelease("C2", "8n", time);
+          if (s) this.snare?.triggerAttackRelease("16n", time);
+          if (h) this.hat?.triggerAttackRelease("32n", time);
+        }
+        // Piano notes scheduled
+        const starts = this.arrangementNotesByStart[step];
+        if (starts && starts.length) {
+          const bpm = Tone.Transport.bpm.value;
+          const secondsPerBeat = 60 / bpm;
+          for (const n of starts) {
+            const clampedLen = Math.max(1, n.length);
+            const durSeconds = secondsPerBeat * (clampedLen / 12);
+            const instEntry = this.leadSynths[n.instanceId] || this.leadSynths["default"];
+            try {
+              if ((instEntry as any)?.synth) (instEntry as any).synth.triggerAttackRelease(n.pitch, durSeconds, time);
+              else if ((instEntry as any)?.sampler) (instEntry as any).sampler.triggerAttackRelease(n.pitch, durSeconds, time);
+              else this.lead?.triggerAttackRelease(n.pitch, durSeconds, time);
+            } catch {}
+            if (this.noiseEnv && this.noiseGain && this.noiseGain.gain.value > 0) {
+              this.noiseEnv.triggerAttackRelease(durSeconds, time);
+            }
+          }
+        }
+        this.globalSubstep++;
+        if (this.globalSubstep >= this.arrangementLengthSubsteps) {
+          this.globalSubstep = 0; // loop arrangement
+        }
+      }, '48n');
+    } else {
+      // legacy 48-step sequence for single-bar playback
+      this.stepSeq = new Tone.Sequence(
+        (time, stepIx) => {
+          try { usePlayhead.getState().setSubstep(stepIx % 48); } catch {}
+          if (this.drumPattern[0][stepIx]) this.kick!.triggerAttackRelease("C2", "8n", time);
+          if (this.drumPattern[1][stepIx]) this.snare!.triggerAttackRelease("16n", time);
+          if (this.drumPattern[2][stepIx]) this.hat!.triggerAttackRelease("32n", time);
+
+          const starts = this.synthNotesByStart[stepIx];
+          if (starts && starts.length) {
+            const bpm = Tone.Transport.bpm.value;
+            const secondsPerBeat = 60 / bpm;
+            for (const n of starts) {
+              const clampedLen = Math.max(1, n.length);
+              const durSeconds = secondsPerBeat * (clampedLen / 12);
+              const instEntry = this.leadSynths[n.instanceId] || this.leadSynths["default"];
+              if (instEntry) {
+                if ((instEntry as any).synth) (instEntry as any).synth.triggerAttackRelease(n.pitch, durSeconds, time);
+                else if ((instEntry as any).sampler) (instEntry as any).sampler.triggerAttackRelease(n.pitch, durSeconds, time);
+                else this.lead!.triggerAttackRelease(n.pitch, durSeconds, time);
+              } else {
+                this.lead!.triggerAttackRelease(n.pitch, durSeconds, time);
+              }
+              if (this.noiseEnv && this.noiseGain && this.noiseGain.gain.value > 0) this.noiseEnv.triggerAttackRelease(durSeconds, time);
+            }
+          }
+        }, Array.from({ length: 48 }, (_, i) => i), '48n'
+      ).start(0);
+    }
   }
 }
 

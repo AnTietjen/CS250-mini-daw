@@ -1,11 +1,15 @@
 import { useEffect } from 'react';
 import usePlaylist from '../../store/playlist';
+import { usePianoInstances } from '../../store/pianoInstances';
+import { useDrumPatterns } from '../../store/drumPatterns';
 import { engine } from '../../audio/engine';
 
 export default function PlaylistBridge() {
   const clips = usePlaylist(s => s.clips);
   const arrangementBars = usePlaylist(s => s.arrangementBars);
-  // Accessing instances here is not required for engine rebuild; clips carry sourceId
+  // We need to subscribe to instances so that if notes change, we rebuild the arrangement
+  const instances = usePianoInstances(s => s.instances);
+  const drumPatterns = useDrumPatterns(s => s.patterns);
 
   useEffect(() => {
     // Keep engine's arrangement length and clip schedule in sync with playlist
@@ -23,7 +27,7 @@ export default function PlaylistBridge() {
     } catch (e) {
       console.error('PlaylistBridge engine sync failed', e);
     }
-  }, [clips, arrangementBars]);
+  }, [clips, arrangementBars, instances, drumPatterns]);
 
   return null;
 }
