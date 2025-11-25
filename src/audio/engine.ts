@@ -37,8 +37,6 @@ class Engine {
   private arrangementNotesByStart: Record<number, { id: string; pitch: string; pitchIndex: number; start: number; length: number; instanceId: string }[]> = {};
   private arrangementDrumBars: Record<number, string[]> = {};
 
-  // Current lanes (order matters)
-  // private drumLanes: EngineLane[] = [];
 
   // Patterns
   private drumPatterns: Record<string, boolean[][]> = {
@@ -496,6 +494,7 @@ class Engine {
         const local = step % 48;
         try {
           const ph = usePlayhead.getState();
+          ph.setAbsoluteSubstep(step);
           ph.setSubstep(local);
           ph.setBar(bar);
         } catch {}

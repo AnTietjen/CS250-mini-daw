@@ -8,6 +8,7 @@ import SampleBrowser from "./components/rack/SampleBrowser";
 import Transport from "./components/transport/Transport";
 import Visualizer from "./components/visualizer/Visualizer";
 
+
 export default function App() {
   const windows = useWindows((s) => s.windows);
 

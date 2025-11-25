@@ -17,10 +17,13 @@ export default function Transport() {
   const [tapBpm, setTapBpm] = useState<number | null>(null);
   const tapTimes = useRef<number[]>([]);
   const tapTimeout = useRef<number | null>(null);
+  
+  // Merged Hooks
   const snap = useSnap((s) => s.snap);
   const setSnap = useSnap((s) => s.setSnap);
   const playing = usePlayhead((s) => s.playing);
-  const addPlaylistWindow = useWindows(s => s.addPlaylistWindow);
+  const addPianoWindow = useWindows((s) => s.addPianoWindow);
+  const addPlaylistWindow = useWindows((s) => s.addPlaylistWindow);
 
   useEffect(() => {
     engine.setTempo(bpm);
@@ -58,16 +61,6 @@ export default function Transport() {
     };
   }, []);
 
-  const colorBtn: React.CSSProperties = {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    border: "1px solid #334155",
-    cursor: "pointer",
-    padding: 0,
-    background: "transparent",
-  };
-
   async function onPlay() {
     if (!audioReady) {
       try {
@@ -103,7 +96,7 @@ export default function Transport() {
           type="number"
           min={30}
           max={300}
-            value={bpm}
+          value={bpm}
           onChange={(e) => {
             const v = Number(e.target.value);
             if (!Number.isNaN(v)) setBpm(Math.max(30, Math.min(300, Math.round(v))));
@@ -144,51 +137,59 @@ export default function Transport() {
         ) : null}
       </label>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-          <input
-            type="checkbox"
-            checked={metOn}
-            onChange={(e) => {
-              setMetOn(e.target.checked);
-              engine.setMetronomeEnabled(e.target.checked);
-            }}
-          />
+      {/* Partner's UI structure with Playlist button added */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
+          <input type="checkbox" checked={metOn} onChange={e => { setMetOn(e.target.checked); engine.setMetronomeEnabled(e.target.checked); }} />
           Metronome
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+        <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
           Snap
-          <select
-            value={snap}
-            onChange={(e) => setSnap(e.target.value as any)}
-            style={{ padding: "2px 6px" }}
-          >
+          <select value={snap} onChange={e => setSnap(e.target.value as any)} style={{ padding: '2px 6px' }}>
             <option value="1/4">1/4</option>
             <option value="1/8">1/8</option>
             <option value="1/16">1/16</option>
+            <option value="1/3">1/3</option>
+            <option value="1/6">1/6</option>
           </select>
         </label>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {PRESET_COLORS.map((c) => (
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, opacity: .8 }}>Theme:</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 280 }}>
+          {PRESET_COLORS.map(c => (
             <button
               key={c.value}
               onClick={() => setPrimary(c.value)}
-              style={{
-                ...colorBtn,
-                background: c.value,
-                boxShadow: c.value === primary ? "0 0 0 2px rgba(255,255,255,0.3)" : "none",
-              }}
               title={c.name}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: c.value === primary ? '2px solid #fff' : '2px solid #1e293b',
+                background: c.value,
+                cursor: 'pointer',
+                boxShadow: c.value === primary ? '0 0 0 2px rgba(255,255,255,0.3)' : 'none'
+              }}
             />
           ))}
         </div>
-        <div style={{ width: 1, height: 20, background: '#334155', margin: '0 8px' }} />
+      </div>
+
+      {/* Window Buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => addPianoWindow()}
+          style={{ padding: '6px 10px', borderRadius: 6 }}
+          title="Add Piano Roll"
+        >+ Piano Roll</button>
+        
         <button
           onClick={() => addPlaylistWindow()}
-          style={{ padding: "6px 10px", borderRadius: 6, background: "#334155", border: "1px solid #64748b", color: "#e2e8f0", fontSize: 12, cursor: "pointer" }}
-        >
-          + Playlist
-        </button>
+          style={{ padding: '6px 10px', borderRadius: 6 }}
+          title="Add Playlist"
+        >+ Playlist</button>
       </div>
     </section>
   );

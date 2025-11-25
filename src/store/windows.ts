@@ -18,12 +18,12 @@ export interface WindowState {
   title: string;
   x: number;
   y: number;
-  w: number;
-  h: number;
-  z: number;
-  minimized: boolean;
-  instanceId?: string;
-  patternId?: string;
+  w: number;            // width (px)
+  h: number;            // height (px)
+  z: number;            // z-index stacking
+  minimized: boolean;   // collapsed state
+  instanceId?: string;  // tie a window to an existing piano instance when present
+  patternId?: string;   // tie a window to a drum pattern
 }
 
 interface WindowsStore {
@@ -41,6 +41,8 @@ interface WindowsStore {
   addKeyboardWindow: () => string;
   addMixerWindow: () => string;
   addPlaylistWindow: () => string;
+  addVisualizerWindow: () => string;
+  addSampleBrowserWindow: () => string;
 
   // Query / bulk helpers
   closeByKind: (kind: WindowKind) => void;
@@ -55,8 +57,10 @@ const BASE_OFFSET_Y = 0;
 
 export const useWindows = create<WindowsStore>((set, get) => ({
   // All floating windows start empty; fixed UI pieces are rendered directly in App.
-  windows: [],
-  nextZ: 1,
+  windows: [
+    { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
+  ],
+  nextZ: 8,
 
   bringToFront: (id) =>
     set((s) => {
@@ -92,6 +96,7 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     set((s) => ({
       windows: s.windows.filter((w) => w.id !== id),
     })),
+
   addPianoWindow: (instanceId?: string) => {
     const id = makeId("win-piano");
     set((s) => ({
@@ -195,6 +200,50 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           y: BASE_OFFSET_Y + 60,
           w: 720,
           h: 300,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  addVisualizerWindow: () => {
+    const id = makeId("win-vis");
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "visualizer",
+          title: "Visualizer",
+          x: BASE_OFFSET_X + 160,
+          y: BASE_OFFSET_Y + 220,
+          w: 520,
+          h: 240,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  addSampleBrowserWindow: () => {
+    const id = makeId("win-sample");
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "sampleBrowser",
+          title: "Sample Browser",
+          x: BASE_OFFSET_X + 180,
+          y: BASE_OFFSET_Y + 180,
+          w: 400,
+          h: 320,
           z: s.nextZ,
           minimized: false,
         },

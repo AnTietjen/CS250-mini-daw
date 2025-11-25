@@ -16,6 +16,7 @@ export default function StepSequencer({ patternId }: { patternId?: string }) {
   const toggleCell = useDrumPatterns(s => s.toggleCell);
   
   // Ensure pattern exists
+  // Ensure pattern exists
   useEffect(() => {
     createPattern(id);
   }, [id, createPattern]);
@@ -26,6 +27,7 @@ export default function StepSequencer({ patternId }: { patternId?: string }) {
     Array(48).fill(false)
   ];
 
+  // keep engine in sync whenever pattern changes
   useEffect(() => {
     engine.setDrumPattern(id, pattern);
   }, [id, pattern]);
