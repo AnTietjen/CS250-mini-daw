@@ -56,38 +56,40 @@ export default function Playlist() {
   }, [drumList]);
   const [selectedDrum, setSelectedDrum] = useState<string>(drumList[0] ?? 'drums');
   
-  const addDefaultPiano = () => {
+  const addSelectedPiano = () => {
     // Find first empty bar in piano lane
     const pianoClips = clips.filter(c => c.sourceKind === 'piano');
     const maxBar = pianoClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
     addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: maxBar, lengthBars: 1 });
   }
 
-  const addNewPattern = () => {
-    const newId = `pat-${Math.floor(Math.random()*10000)}`;
-    createInstance(newId);
-    setSelectedInst(newId);
-    // Find first empty bar in piano lane
-    const pianoClips = clips.filter(c => c.sourceKind === 'piano');
-    const maxBar = pianoClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'piano', sourceId: newId, startBar: maxBar, lengthBars: 1 });
+  const handleInstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === '___NEW___') {
+      const newId = `pat-${Math.floor(Math.random()*10000)}`;
+      createInstance(newId);
+      setSelectedInst(newId);
+    } else {
+      setSelectedInst(val);
+    }
   };
 
-  const addDrums = () => {
+  const addSelectedDrums = () => {
     // Find first empty bar in drums lane
     const drumClips = clips.filter(c => c.sourceKind === 'drums');
     const maxBar = drumClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
     addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'drums', startBar: maxBar, lengthBars: 1 });
   }
 
-  const addNewDrumPattern = () => {
-    const newId = `drums-${Math.floor(Math.random()*10000)}`;
-    createDrumPattern(newId);
-    setSelectedDrum(newId);
-    // Find first empty bar in drums lane
-    const drumClips = clips.filter(c => c.sourceKind === 'drums');
-    const maxBar = drumClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'drums', sourceId: newId, startBar: maxBar, lengthBars: 1 });
+  const handleDrumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === '___NEW___') {
+      const newId = `drums-${Math.floor(Math.random()*10000)}`;
+      createDrumPattern(newId);
+      setSelectedDrum(newId);
+    } else {
+      setSelectedDrum(val);
+    }
   };
 
   const onClipMouseDown = (e: React.MouseEvent, id: string) => {
@@ -149,17 +151,19 @@ export default function Playlist() {
   return (
     <section style={{ display:'flex', flexDirection:'column', height: '100%' }}>
       <div style={{ padding: 8, display: 'flex', gap: 12, alignItems: 'center', background: '#0b1220', borderBottom: '1px solid #1e293b' }}>
-        <select value={selectedInst} onChange={(e)=>setSelectedInst(e.target.value)} style={{ padding:6, borderRadius:6 }}>
+        <select value={selectedInst} onChange={handleInstChange} style={{ padding:6, borderRadius:6 }}>
           {piList.length ? piList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'default'}>default</option>}
+          <option value="___NEW___">+ New Pattern...</option>
         </select>
-        <button onClick={addDefaultPiano} style={{ padding:'6px 10px' }}>+ Add Clip</button>
-        <button onClick={addNewPattern} style={{ padding:'6px 10px' }}>+ New Pattern</button>
+        <button onClick={addSelectedPiano} style={{ padding:'6px 10px' }}>+ Add Clip</button>
+        
         <div style={{ width: 1, height: 20, background: '#1e293b', margin: '0 4px' }} />
-        <select value={selectedDrum} onChange={(e)=>setSelectedDrum(e.target.value)} style={{ padding:6, borderRadius:6 }}>
+        
+        <select value={selectedDrum} onChange={handleDrumChange} style={{ padding:6, borderRadius:6 }}>
           {drumList.length ? drumList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'drums'}>drums</option>}
+          <option value="___NEW___">+ New Drums...</option>
         </select>
-        <button onClick={addDrums} style={{ padding:'6px 10px' }}>+ Add Drums</button>
-        <button onClick={addNewDrumPattern} style={{ padding:'6px 10px' }}>+ New Drums</button>
+        <button onClick={addSelectedDrums} style={{ padding:'6px 10px' }}>+ Add Drums</button>
         <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft: 'auto' }}>
           <span>Bars:</span>
           <input type="number" min={1} value={arrangementBars} onChange={e => setArrangementBars(Math.max(1, Number(e.target.value||1)))} style={{ width: 64, padding:'4px 6px', borderRadius:6 }} />
