@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import usePlaylist from '../../store/playlist';
 import { usePianoInstances } from '../../store/pianoInstances';
+import { useDrumPatterns } from '../../store/drumPatterns';
 import { useWindows } from '../../store/windows';
 import { useTheme } from '../../store/theme';
 import { usePlayhead } from '../../store/playhead';
@@ -13,7 +14,7 @@ export default function Playlist() {
   const arrangementBars = usePlaylist(s => s.arrangementBars);
   const addClip = usePlaylist(s => s.addClip);
   const moveClip = usePlaylist(s => s.moveClip);
-  const resizeClip = usePlaylist(s => s.resizeClip);
+  // const resizeClip = usePlaylist(s => s.resizeClip); // Disabled for fixed pattern length
   const deleteClip = usePlaylist(s => s.deleteClip);
   const duplicateClip = usePlaylist(s => s.duplicateClip);
   // keep refs to actions for future interaction (drag/resize/delete)
@@ -38,18 +39,56 @@ export default function Playlist() {
   }, [clips]);
 
   const instances = usePianoInstances(s => s.instances);
+  const createInstance = usePianoInstances(s => s.createInstance);
   const piList = useMemo(() => Object.keys(instances), [instances]);
+  
+  const drumPatterns = useDrumPatterns(s => s.patterns);
+  const createDrumPattern = useDrumPatterns(s => s.createPattern);
+  const drumList = useMemo(() => Object.keys(drumPatterns).length ? Object.keys(drumPatterns) : ['drums'], [drumPatterns]);
+
   useEffect(() => {
     if (piList.length && !piList.includes(selectedInst)) setSelectedInst(piList[0]);
   }, [piList]);
   const [selectedInst, setSelectedInst] = useState<string>(piList[0] ?? 'default');
+
+  useEffect(() => {
+    if (drumList.length && !drumList.includes(selectedDrum)) setSelectedDrum(drumList[0]);
+  }, [drumList]);
+  const [selectedDrum, setSelectedDrum] = useState<string>(drumList[0] ?? 'drums');
+  
   const addDefaultPiano = () => {
-    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: arrangementBars, lengthBars: 1 });
+    // Find first empty bar in piano lane
+    const pianoClips = clips.filter(c => c.sourceKind === 'piano');
+    const maxBar = pianoClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: maxBar, lengthBars: 1 });
   }
 
+  const addNewPattern = () => {
+    const newId = `pat-${Math.floor(Math.random()*10000)}`;
+    createInstance(newId);
+    setSelectedInst(newId);
+    // Find first empty bar in piano lane
+    const pianoClips = clips.filter(c => c.sourceKind === 'piano');
+    const maxBar = pianoClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'piano', sourceId: newId, startBar: maxBar, lengthBars: 1 });
+  };
+
   const addDrums = () => {
-    addClip({ sourceKind: 'drums', sourceId: 'drums', startBar: arrangementBars, lengthBars: 1 });
+    // Find first empty bar in drums lane
+    const drumClips = clips.filter(c => c.sourceKind === 'drums');
+    const maxBar = drumClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'drums', startBar: maxBar, lengthBars: 1 });
   }
+
+  const addNewDrumPattern = () => {
+    const newId = `drums-${Math.floor(Math.random()*10000)}`;
+    createDrumPattern(newId);
+    setSelectedDrum(newId);
+    // Find first empty bar in drums lane
+    const drumClips = clips.filter(c => c.sourceKind === 'drums');
+    const maxBar = drumClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'drums', sourceId: newId, startBar: maxBar, lengthBars: 1 });
+  };
 
   const onClipMouseDown = (e: React.MouseEvent, id: string) => {
     if (e.button !== 0) return;
@@ -61,15 +100,7 @@ export default function Playlist() {
     window.addEventListener('mousemove', onWindowMove);
     window.addEventListener('mouseup', onWindowUp);
   };
-  const onResizeMouseDown = (e: React.MouseEvent, id: string) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    const c = clips.find(c => c.id === id); if (!c) return;
-    const rect = (e.currentTarget.parentElement?.parentElement as HTMLElement).getBoundingClientRect();
-    setDrag({ id, startBar: c.startBar, originX: e.clientX - rect.left, mode: 'resize' });
-    window.addEventListener('mousemove', onWindowMove);
-    window.addEventListener('mouseup', onWindowUp);
-  };
+  // Resize handler removed
   const onWindowMove = (e: MouseEvent) => {
     setDrag(d => {
       if (!d) return d;
@@ -78,7 +109,7 @@ export default function Playlist() {
       const relX = e.clientX - left;
       const barAt = Math.max(0, Math.round(relX / BAR_PX));
       if (d.mode === 'move') moveClip(d.id, barAt);
-      if (d.mode === 'resize') resizeClip(d.id, Math.max(1, barAt - (clips.find(c => c.id === d.id)?.startBar ?? 0)));
+      // Resize logic removed
       return d;
     });
   };
@@ -121,15 +152,21 @@ export default function Playlist() {
         <select value={selectedInst} onChange={(e)=>setSelectedInst(e.target.value)} style={{ padding:6, borderRadius:6 }}>
           {piList.length ? piList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'default'}>default</option>}
         </select>
-        <button onClick={addDefaultPiano} style={{ padding:'6px 10px' }}>+ Piano Clip</button>
-        <button onClick={addDrums} style={{ padding:'6px 10px' }}>+ Drums Clip</button>
+        <button onClick={addDefaultPiano} style={{ padding:'6px 10px' }}>+ Add Clip</button>
+        <button onClick={addNewPattern} style={{ padding:'6px 10px' }}>+ New Pattern</button>
+        <div style={{ width: 1, height: 20, background: '#1e293b', margin: '0 4px' }} />
+        <select value={selectedDrum} onChange={(e)=>setSelectedDrum(e.target.value)} style={{ padding:6, borderRadius:6 }}>
+          {drumList.length ? drumList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'drums'}>drums</option>}
+        </select>
+        <button onClick={addDrums} style={{ padding:'6px 10px' }}>+ Add Drums</button>
+        <button onClick={addNewDrumPattern} style={{ padding:'6px 10px' }}>+ New Drums</button>
         <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft: 'auto' }}>
           <span>Bars:</span>
           <input type="number" min={1} value={arrangementBars} onChange={e => setArrangementBars(Math.max(1, Number(e.target.value||1)))} style={{ width: 64, padding:'4px 6px', borderRadius:6 }} />
         </div>
       </div>
       <div style={{ padding: '6px 10px', fontSize: 12, color: '#9aa7bd', background:'#0b1220' }}>
-        Tip: Drag clips to move, drag right edge to resize. Shift+Click to multi-select. Delete removes, Ctrl+D duplicates. Double‑click to open editor. Right‑click toggles mute.
+        Tip: Drag clips to move. Shift+Click to multi-select. Delete removes, Ctrl+D duplicates. Double‑click to open editor. Right‑click toggles mute.
       </div>
       <div ref={containerRef} style={{ flex:1, overflow: 'auto', background:'#071428', padding: 12 }} onMouseDown={() => clearSelection()}>
         <div style={{ position:'relative', minWidth: arrangementBars*BAR_PX, height: LANE_H*2, border: '1px solid #1e293b', borderRadius: 6, background:'#0b1935' }}>
@@ -149,8 +186,8 @@ export default function Playlist() {
                   if (existing) bringToFront(existing.id); else addPianoWindow(c.sourceId);
                 } else if (c.sourceKind === 'drums') {
                   // open step sequencer to edit drums
-                  const existing = windowsList.find(w => w.kind === 'stepSequencer');
-                  if (existing) bringToFront(existing.id); else addStepSequencerWindow();
+                  const existing = windowsList.find(w => w.kind === 'stepSequencer' && (w as any).patternId === c.sourceId);
+                  if (existing) bringToFront(existing.id); else addStepSequencerWindow(c.sourceId);
                 }
               }}
               onContextMenu={(e) => { e.preventDefault(); setMuted(c.id, !c.muted); }}
@@ -158,7 +195,12 @@ export default function Playlist() {
             >
               <div style={{ fontWeight: 700, pointerEvents:'none' }}>{c.sourceKind === 'drums' ? 'Drums' : c.sourceId}</div>
               <div style={{ fontSize: 12, pointerEvents:'none' }}>Bar {c.startBar} • {c.lengthBars} bars</div>
-              <div onMouseDown={(e)=> onResizeMouseDown(e, c.id)} style={{ position:'absolute', right:0, top:0, width:8, height:'100%', cursor:'ew-resize', background:'rgba(255,255,255,0.18)', borderTopRightRadius:6, borderBottomRightRadius:6 }} />
+              {/* Resize handle removed to enforce fixed pattern length for now */}
+              <button
+                onMouseDown={(e) => { e.stopPropagation(); deleteClip(c.id); }}
+                style={{ position: 'absolute', top: 2, right: 12, width: 16, height: 16, background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                title="Delete clip"
+              >×</button>
             </div>
           ))}
         </div>

@@ -15,6 +15,7 @@ export interface WindowState {
   z: number;            // z-index stacking
   minimized: boolean;   // collapsed state
   instanceId?: string;  // tie a window to an existing piano instance when present
+  patternId?: string;   // tie a window to a drum pattern
 }
 
 interface WindowsStore {
@@ -29,19 +30,13 @@ interface WindowsStore {
   addKeyboardWindow: () => string;
   addMixerWindow: () => string;
   addVisualizerWindow: () => string;
-  addStepSequencerWindow: () => string;
+  addStepSequencerWindow: (patternId?: string) => string;
   addPlaylistWindow: () => string;
 }
 
 export const useWindows = create<WindowsStore>((set) => ({
   windows: [
-    { id: "win-step", kind: "stepSequencer", title: "Step Sequencer", x: 40, y: 120, w: 560, h: 240, z: 1, minimized: false },
-    { id: "win-piano", kind: "pianoRoll", title: "Piano Roll", x: 40, y: 380, w: 560, h: 380, z: 2, minimized: false },
     { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
-    { id: "win-keys", kind: "keyboard", title: "Typing Keyboard", x: 640, y: 340, w: 360, h: 260, z: 4, minimized: false },
-    { id: "win-mixer", kind: "mixer", title: "Mixer", x: 1020, y: 120, w: 520, h: 340, z: 5, minimized: false },
-    { id: "win-vis", kind: "visualizer", title: "Visualizer", x: 1020, y: 480, w: 520, h: 240, z: 6, minimized: false },
-    { id: "win-sample", kind: "sampleBrowser", title: "Sample Browser", x: 180, y: 180, w: 400, h: 320, z: 7, minimized: false },
   ],
   nextZ: 8,
   bringToFront: (id) => set((s) => {
@@ -92,10 +87,10 @@ export const useWindows = create<WindowsStore>((set) => ({
     }));
     return id;
   },
-  addStepSequencerWindow: () => {
+  addStepSequencerWindow: (patternId?: string) => {
     const id = `win-step-${Math.random().toString(36).slice(2,7)}`;
     set((s) => ({
-      windows: [...s.windows, { id, kind: "stepSequencer", title: "Step Sequencer", x: 40 + (s.windows.length%4)*40, y: 120 + (s.windows.length%4)*40, w: 520, h: 240, z: s.nextZ, minimized: false }],
+      windows: [...s.windows, { id, kind: "stepSequencer", title: "Step Sequencer", x: 40 + (s.windows.length%4)*40, y: 120 + (s.windows.length%4)*40, w: 520, h: 240, z: s.nextZ, minimized: false, patternId }],
       nextZ: s.nextZ + 1,
     }));
     return id;

@@ -1,7 +1,7 @@
 // src/components/editor/StepSequencer.tsx
 import { useEffect, useMemo } from "react";
 import { useTheme } from "../../store/theme";
-import { useProject } from "../../store/project";
+import { useDrumPatterns } from "../../store/drumPatterns";
 import { engine } from "../../audio/engine";
 import { useElementSize } from "../../hooks/useElementSize";
 import { usePlayhead } from "../../store/playhead";
@@ -9,14 +9,27 @@ import { useSnap, SNAP_TO_SUBSTEPS } from "../../store/snap";
 
 const ROW_LABELS = ["Kick", "Snare", "Hat"];
 
-export default function StepSequencer() {
-  const drumPattern = useProject((s) => s.drumPattern);
-  const toggleDrumCell = useProject((s) => s.toggleDrumCell);
+export default function StepSequencer({ patternId }: { patternId?: string }) {
+  const id = patternId || 'drums';
+  const createPattern = useDrumPatterns(s => s.createPattern);
+  const patterns = useDrumPatterns(s => s.patterns);
+  const toggleCell = useDrumPatterns(s => s.toggleCell);
+  
+  // Ensure pattern exists
+  useEffect(() => {
+    createPattern(id);
+  }, [id, createPattern]);
+
+  const pattern = patterns[id]?.rows || [
+    Array(48).fill(false),
+    Array(48).fill(false),
+    Array(48).fill(false)
+  ];
 
   // keep engine in sync whenever pattern changes
   useEffect(() => {
-    engine.setDrumPattern(drumPattern);
-  }, [drumPattern]);
+    engine.setDrumPattern(id, pattern);
+  }, [id, pattern]);
 
   const [containerRef, size] = useElementSize<HTMLDivElement>();
   const substep = usePlayhead(s => s.substep);
@@ -61,7 +74,7 @@ export default function StepSequencer() {
           transform: `translate3d(${(substep / substepsPerCell) * (cell + gap)}px, 0, 0)`,
           willChange: 'transform'
         }} />
-        {drumPattern.map((row, r) => (
+        {pattern.map((row, r) => (
           <div key={r} style={{ display: "contents" }}>
             <div style={{ alignSelf: "center", opacity: 0.9, fontSize: 12 }}>{ROW_LABELS[r]}</div>
             {Array.from({ length: columns }).map((_, c) => {
@@ -71,7 +84,7 @@ export default function StepSequencer() {
               return (
               <button
                 key={c}
-                onClick={() => toggleDrumCell(r, c, substepsPerCell)}
+                onClick={() => toggleCell(id, r, c, substepsPerCell)}
                 style={{
                   width: cell,
                   height: cell,
