@@ -35,7 +35,13 @@ interface WindowsStore {
   toggleMin: (id: string) => void;
   closeWindow: (id: string) => void;
 
-  // Creation helpers
+  // FL Studio-style singleton editor windows (one per kind, switchable pattern)
+  openPianoRoll: (instanceId?: string) => void;
+  openStepSequencer: (patternId?: string) => void;
+  setEditorInstance: (windowId: string, instanceId: string) => void;
+  setEditorPattern: (windowId: string, patternId: string) => void;
+
+  // Creation helpers (legacy, still used for other window types)
   addStepSequencerWindow: (patternId?: string) => string;
   addPianoWindow: (instanceId?: string) => string;
   addKeyboardWindow: () => string;
@@ -95,6 +101,86 @@ export const useWindows = create<WindowsStore>((set, get) => ({
   closeWindow: (id) =>
     set((s) => ({
       windows: s.windows.filter((w) => w.id !== id),
+    })),
+
+  // FL Studio-style: open singleton piano roll, switch to instance if provided
+  openPianoRoll: (instanceId?: string) => {
+    const state = get();
+    const existing = state.windows.find(w => w.kind === 'pianoRoll');
+    if (existing) {
+      // Already open - bring to front and switch instance
+      set(s => ({
+        windows: s.windows.map(w => 
+          w.id === existing.id 
+            ? { ...w, z: s.nextZ, minimized: false, instanceId: instanceId ?? w.instanceId }
+            : w
+        ),
+        nextZ: s.nextZ + 1,
+      }));
+    } else {
+      // Create new
+      const id = makeId("win-piano");
+      set(s => ({
+        windows: [...s.windows, {
+          id,
+          kind: "pianoRoll" as WindowKind,
+          title: "Piano Roll",
+          x: BASE_OFFSET_X + 80,
+          y: BASE_OFFSET_Y + 100,
+          w: 620,
+          h: 400,
+          z: s.nextZ,
+          minimized: false,
+          instanceId,
+        }],
+        nextZ: s.nextZ + 1,
+      }));
+    }
+  },
+
+  // FL Studio-style: open singleton step sequencer, switch to pattern if provided
+  openStepSequencer: (patternId?: string) => {
+    const state = get();
+    const existing = state.windows.find(w => w.kind === 'stepSequencer');
+    if (existing) {
+      // Already open - bring to front and switch pattern
+      set(s => ({
+        windows: s.windows.map(w => 
+          w.id === existing.id 
+            ? { ...w, z: s.nextZ, minimized: false, patternId: patternId ?? w.patternId }
+            : w
+        ),
+        nextZ: s.nextZ + 1,
+      }));
+    } else {
+      // Create new
+      const id = makeId("win-step");
+      set(s => ({
+        windows: [...s.windows, {
+          id,
+          kind: "stepSequencer" as WindowKind,
+          title: "Step Sequencer",
+          x: BASE_OFFSET_X + 40,
+          y: BASE_OFFSET_Y + 40,
+          w: 620,
+          h: 280,
+          z: s.nextZ,
+          minimized: false,
+          patternId,
+        }],
+        nextZ: s.nextZ + 1,
+      }));
+    }
+  },
+
+  setEditorInstance: (windowId, instanceId) =>
+    set(s => ({
+      windows: s.windows.map(w => w.id === windowId ? { ...w, instanceId } : w),
+    })),
+
+  setEditorPattern: (windowId, patternId) =>
+    set(s => ({
+      windows: s.windows.map(w => w.id === windowId ? { ...w, patternId } : w),
     })),
 
   addPianoWindow: (instanceId?: string) => {

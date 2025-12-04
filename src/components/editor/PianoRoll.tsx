@@ -8,6 +8,8 @@ import { usePianoView } from "../../store/pianoView";
 import { useTheme } from "../../store/theme";
 import { useSnap, SNAP_TO_SUBSTEPS } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";
+import { useWindows } from "../../store/windows";
+import { useMixer } from "../../store/mixer";
 import Knob from "../controls/Knob";
 
 // Build full pitch list C0..C8 (inclusive C8) then reverse for UI (top = highest)
@@ -29,8 +31,43 @@ const isBlackKey = (p: string) => p.includes("#");
 
 const EMPTY_NOTES: ReadonlyArray<any> = Object.freeze([]);
 
-export default function PianoRoll({ instanceId }: { instanceId?: string }) {
-  const id = instanceId || 'default';
+// Mini component for mixer routing dropdown
+function MixerRouting({ patternId }: { patternId: string }) {
+  const primary = useTheme(s => s.primary);
+  const channels = useMixer(s => s.channels);
+  const routing = useMixer(s => s.routing);
+  const setRouting = useMixer(s => s.setRouting);
+  
+  return (
+    <div style={{ display: 'flex', gap: 6, fontSize: 12, alignItems: 'center' }}>
+      <span style={{ opacity: 0.7 }}>→</span>
+      <select
+        value={routing[patternId] ?? 0}
+        onChange={(e) => {
+          const chId = Number(e.target.value);
+          setRouting(patternId, chId);
+          engine.setPatternRouting(patternId, chId);
+        }}
+        style={{ padding: '4px 8px', borderRadius: 6, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0', minWidth: 80 }}
+        title="Route to mixer channel"
+      >
+        <option value={0}>Master</option>
+        {channels.filter(c => c.id > 0).map(c => (
+          <option key={c.id} value={c.id}>Insert {c.id}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+export default function PianoRoll({ instanceId, windowId }: { instanceId?: string; windowId?: string }) {
+  // FL Studio-style: get all instances for dropdown
+  const instances = usePianoInstances(s => s.instances);
+  const createInstance = usePianoInstances(s => s.createInstance);
+  const setEditorInstance = useWindows(s => s.setEditorInstance);
+  const instanceList = useMemo(() => Object.keys(instances), [instances]);
+  
+  const id = instanceId || instanceList[0] || 'default';
   const notes = usePianoInstances(s => s.instances[id]?.notes ?? EMPTY_NOTES);
   const primary = useTheme(s => s.primary);
   const addNote = usePianoInstances(s => s.addNote);
@@ -195,9 +232,30 @@ export default function PianoRoll({ instanceId }: { instanceId?: string }) {
   <section ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 4px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {/* FL Studio-style pattern selector */}
+          <div style={{ display: 'flex', gap: 6, fontSize: 12, alignItems: 'center' }}>
+            Pattern:
+            <select 
+              value={id} 
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '___NEW___') {
+                  const newId = `pat-${Math.floor(Math.random()*10000)}`;
+                  createInstance(newId);
+                  if (windowId) setEditorInstance(windowId, newId);
+                } else {
+                  if (windowId) setEditorInstance(windowId, val);
+                }
+              }}
+              style={{ padding: '4px 8px', borderRadius: 6, minWidth: 100, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }}
+            >
+              {instanceList.map(pid => <option key={pid} value={pid}>{pid}</option>)}
+              <option value="___NEW___">+ New Pattern...</option>
+            </select>
+          </div>
           <div style={{ display: 'flex', gap: 6, fontSize: 12, alignItems: 'center' }}>
             Wave:
-            <select value={wave} onChange={e => { const t = e.target.value as any; setWave(id, t); }}>
+            <select value={wave} onChange={e => { const t = e.target.value as any; setWave(id, t); }} style={{ padding: '4px 8px', borderRadius: 6, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }}>
               <option value="sine">Sine</option>
               <option value="square">Square</option>
               <option value="sawtooth">Saw</option>
@@ -205,6 +263,7 @@ export default function PianoRoll({ instanceId }: { instanceId?: string }) {
               <option value="piano">Piano (Sampled)</option>
             </select>
           </div>
+          <MixerRouting patternId={id} />
           <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
             <span style={{ opacity: 0.6 }}>V</span>
             <button style={zoomBtn} onClick={zoomOutV}>-</button>

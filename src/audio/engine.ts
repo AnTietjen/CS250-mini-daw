@@ -86,6 +86,30 @@ class Engine {
   > = {};
   private pianoPitches = ["B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"];
 
+  // Mixer channels: id 0 = master, 1-15 = insert channels
+  // Signal flow: input -> panner -> gain -> output
+  private mixerChannels: { 
+    id: number; 
+    input: Tone.Gain;  // Input node for routing sources
+    panner: Tone.Panner;
+    gain: Tone.Gain;
+    volume: number;
+    pan: number;
+    muted: boolean;
+    solo: boolean;
+  }[] = [];
+  private mixerInitialized = false;
+  
+  // Individual drum routing (kick, snare, hat can each go to different channels)
+  private drumRouting: { kick: number; snare: number; hat: number } = { kick: 0, snare: 0, hat: 0 };
+  // Gain nodes for each drum to route through mixer
+  private kickGain: Tone.Gain | null = null;
+  private snareGain: Tone.Gain | null = null;
+  private hatGain: Tone.Gain | null = null;
+  
+  // Pattern to mixer channel routing
+  private patternRouting: Record<string, number> = {};
+
   private initGraph() {
     if (this.initialized) return;
 
@@ -95,6 +119,9 @@ class Engine {
     this.analyserWave = new Tone.Analyser("waveform", 1024);
     this.limiter.connect(this.analyserFFT);
     this.limiter.connect(this.analyserWave);
+
+    // Initialize mixer channels
+    this.initMixerChannels();
 
     // Metronome
     this.metSynth = new Tone.Synth({
@@ -569,6 +596,178 @@ class Engine {
         }, Array.from({ length: 48 }, (_, i) => i), '48n'
       ).start(0);
     }
+  }
+
+  // ============ MIXER ============
+  
+  private initMixerChannels() {
+    if (this.mixerInitialized) return;
+    
+    // Create 16 mixer channels (0 = master, 1-15 = inserts)
+    // Signal flow: input -> panner -> gain -> output
+    for (let i = 0; i < 16; i++) {
+      const input = new Tone.Gain(1);  // Input summing node
+      const panner = new Tone.Panner(0);
+      const gain = new Tone.Gain(0.8);
+      
+      // Connect: input -> panner -> gain
+      input.connect(panner);
+      panner.connect(gain);
+      
+      if (i === 0) {
+        // Master channel goes to limiter
+        gain.connect(this.limiter!);
+      }
+      // Insert channels will be connected to master after all are created
+      
+      this.mixerChannels.push({
+        id: i,
+        input,
+        panner,
+        gain,
+        volume: 0.8,
+        pan: 0,
+        muted: false,
+        solo: false,
+      });
+    }
+    
+    // Connect all insert channels to master's input
+    const master = this.mixerChannels[0];
+    for (let i = 1; i < 16; i++) {
+      this.mixerChannels[i].gain.connect(master.input);
+    }
+    
+    this.mixerInitialized = true;
+  }
+  
+  initMixer() {
+    if (!this.initialized) this.initGraph();
+    if (!this.mixerInitialized) this.initMixerChannels();
+    
+    // Reconnect instruments through mixer
+    this.reconnectInstrumentsToMixer();
+  }
+  
+  private reconnectInstrumentsToMixer() {
+    // Disconnect existing connections and route through mixer
+    const master = this.mixerChannels[0];
+    
+    // Create individual gain nodes for drums if not exists
+    if (!this.kickGain) {
+      this.kickGain = new Tone.Gain(1);
+    }
+    if (!this.snareGain) {
+      this.snareGain = new Tone.Gain(1);
+    }
+    if (!this.hatGain) {
+      this.hatGain = new Tone.Gain(1);
+    }
+    
+    // Reconnect drums through their individual gain nodes
+    if (this.kick) {
+      this.kick.disconnect();
+      this.kick.connect(this.kickGain);
+    }
+    if (this.snare) {
+      this.snare.disconnect();
+      this.snare.connect(this.snareGain);
+    }
+    if (this.hat) {
+      this.hat.disconnect();
+      this.hat.connect(this.hatGain);
+    }
+    
+    // Route drum gains to their designated mixer channels
+    this.updateDrumRouting();
+    
+    // Reconnect synths to master (default) - routing happens per-instance
+    if (this.synthGain) {
+      this.synthGain.disconnect();
+      this.synthGain.connect(master.input);
+    }
+    if (this.noiseGain) {
+      this.noiseGain.disconnect();
+      this.noiseGain.connect(master.input);
+    }
+  }
+  
+  private updateDrumRouting() {
+    if (!this.mixerInitialized) return;
+    
+    const kickChannel = this.mixerChannels[this.drumRouting.kick] || this.mixerChannels[0];
+    const snareChannel = this.mixerChannels[this.drumRouting.snare] || this.mixerChannels[0];
+    const hatChannel = this.mixerChannels[this.drumRouting.hat] || this.mixerChannels[0];
+    
+    if (this.kickGain) {
+      this.kickGain.disconnect();
+      this.kickGain.connect(kickChannel.input);
+    }
+    if (this.snareGain) {
+      this.snareGain.disconnect();
+      this.snareGain.connect(snareChannel.input);
+    }
+    if (this.hatGain) {
+      this.hatGain.disconnect();
+      this.hatGain.connect(hatChannel.input);
+    }
+  }
+  
+  setDrumRouting(drum: 'kick' | 'snare' | 'hat', channelId: number) {
+    this.drumRouting[drum] = channelId;
+    this.updateDrumRouting();
+  }
+  
+  getDrumRouting(drum: 'kick' | 'snare' | 'hat'): number {
+    return this.drumRouting[drum];
+  }
+  
+  setMixerChannel(channelId: number, volume: number, pan: number, muted: boolean, solo: boolean) {
+    if (!this.mixerInitialized) return;
+    
+    const channel = this.mixerChannels[channelId];
+    if (!channel) return;
+    
+    channel.volume = volume;
+    channel.pan = pan;
+    channel.muted = muted;
+    channel.solo = solo;
+    
+    // Apply to audio nodes
+    channel.panner.pan.value = pan;
+    
+    // Check solo state across all channels
+    const anySolo = this.mixerChannels.some(c => c.solo && c.id !== 0);
+    
+    if (channelId === 0) {
+      // Master channel
+      channel.gain.gain.value = muted ? 0 : volume;
+    } else {
+      // Insert channel - respect solo logic
+      if (anySolo) {
+        channel.gain.gain.value = (solo && !muted) ? volume : 0;
+      } else {
+        channel.gain.gain.value = muted ? 0 : volume;
+      }
+    }
+  }
+  
+  setPatternRouting(patternId: string, channelId: number) {
+    this.patternRouting[patternId] = channelId;
+    
+    // Update synth routing if it's a piano instance
+    const synthEntry = this.leadSynths[patternId];
+    if (synthEntry && this.mixerInitialized) {
+      const channel = this.mixerChannels[channelId] || this.mixerChannels[0];
+      if ((synthEntry as any).gain) {
+        (synthEntry as any).gain.disconnect();
+        (synthEntry as any).gain.connect(channel.input);
+      }
+    }
+  }
+  
+  getPatternChannel(patternId: string): number {
+    return this.patternRouting[patternId] ?? 0;
   }
 }
 

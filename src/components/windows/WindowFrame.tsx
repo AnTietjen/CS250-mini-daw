@@ -159,8 +159,8 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
 
   const content = useMemo(() => {
     switch (win.kind) {
-      case "stepSequencer": return <StepSequencer patternId={(win as any).patternId} />;
-      case "pianoRoll": return <PianoRoll instanceId={instId} />;
+      case "stepSequencer": return <StepSequencer patternId={(win as any).patternId} windowId={win.id} />;
+      case "pianoRoll": return <PianoRoll instanceId={instId} windowId={win.id} />;
       case "settings": return <Transport />;
       case "keyboard": return <TypingKeyboard instanceId={win.id} />;
       case "playlist": return <Playlist />;
@@ -169,7 +169,7 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
        case "sampleBrowser": return <SampleBrowser />;
       default: return <div>Unknown window: {win.kind}</div>;
     }
-  }, [win.kind, win.id]);
+  }, [win.kind, win.id, instId, (win as any).patternId]);
   
   return (
     <div

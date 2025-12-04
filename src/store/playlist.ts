@@ -7,15 +7,19 @@ export type PlaylistClip = {
   sourceId: string; // piano instance id or 'drums' for drum clip
   startBar: number; // integer >= 0
   lengthBars: number; // integer >= 1
+  lane: number; // vertical track index (0-based)
   muted?: boolean;
   selected?: boolean;
 }
 
+export const NUM_LANES = 16; // FL Studio-style multiple lanes
+
 interface PlaylistState {
   clips: PlaylistClip[];
   arrangementBars: number;
-  addClip: (c: Omit<PlaylistClip, 'id'|'muted'|'selected'> & { id?: string }) => string | null;
+  addClip: (c: Omit<PlaylistClip, 'id'|'muted'|'selected'|'lane'> & { id?: string; lane?: number }) => string | null;
   moveClip: (id: string, startBar: number) => void;
+  moveClipToLane: (id: string, lane: number) => void;
   resizeClip: (id: string, lengthBars: number) => void;
   deleteClip: (id: string) => void;
   duplicateClip: (id: string) => void;
@@ -34,7 +38,8 @@ export const usePlaylist = create<PlaylistState>((set) => ({
     const id = c.id ?? makeId();
     const startBar = Math.max(0, Math.round(c.startBar));
     const lengthBars = Math.max(1, Math.round(c.lengthBars));
-    const clip = { id, sourceKind: c.sourceKind, sourceId: c.sourceId, startBar, lengthBars } as PlaylistClip;
+    const lane = c.lane ?? 0;
+    const clip = { id, sourceKind: c.sourceKind, sourceId: c.sourceId, startBar, lengthBars, lane } as PlaylistClip;
     set(s => ({ clips: [...s.clips, clip], arrangementBars: Math.max(s.arrangementBars, startBar + lengthBars) }));
     return id;
   },
@@ -46,11 +51,14 @@ export const usePlaylist = create<PlaylistState>((set) => ({
     if (!c) return s;
     const newId = makeId();
     const startBar = c.startBar + c.lengthBars;
-    const clone: PlaylistClip = { ...c, id: newId, startBar };
+    const clone: PlaylistClip = { ...c, id: newId, startBar, lane: c.lane ?? 0 };
     const nextClips = [...s.clips, clone];
     const nextBars = Math.max(s.arrangementBars, startBar + c.lengthBars);
     return { clips: nextClips, arrangementBars: nextBars };
   }),
+  moveClipToLane: (id: string, lane: number) => set(s => ({
+    clips: s.clips.map(c => c.id === id ? { ...c, lane: Math.max(0, Math.min(NUM_LANES - 1, lane)) } : c)
+  })),
   setMuted: (id, muted) => set(s => ({ clips: s.clips.map(c => c.id === id ? { ...c, muted } : c) })),
   setSelection: (ids, append=false) => set(s => {
     const setIds = new Set(ids);

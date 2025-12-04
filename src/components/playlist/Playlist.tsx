@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
-import usePlaylist from '../../store/playlist';
+import usePlaylist, { NUM_LANES } from '../../store/playlist';
 import { usePianoInstances } from '../../store/pianoInstances';
 import { useDrumPatterns } from '../../store/drumPatterns';
 import { useWindows } from '../../store/windows';
@@ -7,7 +7,7 @@ import { useTheme } from '../../store/theme';
 import { usePlayhead } from '../../store/playhead';
 
 const BAR_PX = 140;
-const LANE_H = 64;
+const LANE_H = 48;
 
 export default function Playlist() {
   const clips = usePlaylist(s => s.clips);
@@ -17,13 +17,12 @@ export default function Playlist() {
   // const resizeClip = usePlaylist(s => s.resizeClip); // Disabled for fixed pattern length
   const deleteClip = usePlaylist(s => s.deleteClip);
   const duplicateClip = usePlaylist(s => s.duplicateClip);
+  const moveClipToLane = usePlaylist(s => s.moveClipToLane);
   // keep refs to actions for future interaction (drag/resize/delete)
   // Intentionally not called yet in this MVP, but keep selectors for future interactions.
   const setMuted = usePlaylist(s => s.setMuted); // right-click or double-click behavior replaced; kept for context menu
-  const addPianoWindow = useWindows(s => s.addPianoWindow);
-  const addStepSequencerWindow = useWindows(s => s.addStepSequencerWindow);
-  const bringToFront = useWindows(s => s.bringToFront);
-  const windowsList = useWindows(s => s.windows);
+  const openPianoRoll = useWindows(s => s.openPianoRoll);
+  const openStepSequencer = useWindows(s => s.openStepSequencer);
   const setSelection = usePlaylist(s => s.setSelection);
   const clearSelection = usePlaylist(s => s.clearSelection);
   const setArrangementBars = usePlaylist(s => s.setArrangementBars);
@@ -32,7 +31,7 @@ export default function Playlist() {
   const bar = usePlayhead(s => s.bar);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [/*drag*/ , setDrag] = useState<null | { id: string; startBar: number; originX: number; mode: 'move' | 'resize' }>(null);
+  const [drag, setDrag] = useState<null | { id: string; startBar: number; startLane: number; originX: number; originY: number; mode: 'move' | 'resize' }>(null);
 
   useEffect(() => {
     // placeholder: nothing yet
@@ -55,12 +54,13 @@ export default function Playlist() {
     if (drumList.length && !drumList.includes(selectedDrum)) setSelectedDrum(drumList[0]);
   }, [drumList]);
   const [selectedDrum, setSelectedDrum] = useState<string>(drumList[0] ?? 'drums');
+  const [selectedLane, setSelectedLane] = useState<number>(0);
   
   const addSelectedPiano = () => {
-    // Find first empty bar in piano lane
-    const pianoClips = clips.filter(c => c.sourceKind === 'piano');
-    const maxBar = pianoClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: maxBar, lengthBars: 1 });
+    // Add at selected lane, find first empty bar
+    const laneClips = clips.filter(c => (c.lane ?? 0) === selectedLane);
+    const maxBar = laneClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: maxBar, lengthBars: 1, lane: selectedLane });
   }
 
   const handleInstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -75,10 +75,10 @@ export default function Playlist() {
   };
 
   const addSelectedDrums = () => {
-    // Find first empty bar in drums lane
-    const drumClips = clips.filter(c => c.sourceKind === 'drums');
-    const maxBar = drumClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'drums', startBar: maxBar, lengthBars: 1 });
+    // Add at selected lane, find first empty bar
+    const laneClips = clips.filter(c => (c.lane ?? 0) === selectedLane);
+    const maxBar = laneClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'drums', startBar: maxBar, lengthBars: 1, lane: selectedLane });
   }
 
   const handleDrumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -98,20 +98,25 @@ export default function Playlist() {
     const append = e.shiftKey;
     setSelection([id], append);
     const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-    setDrag({ id, startBar: c.startBar, originX: e.clientX - rect.left, mode: 'move' });
+    setDrag({ id, startBar: c.startBar, startLane: c.lane ?? 0, originX: e.clientX - rect.left, originY: e.clientY - rect.top, mode: 'move' });
     window.addEventListener('mousemove', onWindowMove);
     window.addEventListener('mouseup', onWindowUp);
   };
-  // Resize handler removed
+  
   const onWindowMove = (e: MouseEvent) => {
     setDrag(d => {
       if (!d) return d;
       const wrap = containerRef.current?.firstElementChild as HTMLElement | null;
-      const left = (wrap?.getBoundingClientRect().left ?? 0);
-      const relX = e.clientX - left;
+      if (!wrap) return d;
+      const rect = wrap.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
       const barAt = Math.max(0, Math.round(relX / BAR_PX));
-      if (d.mode === 'move') moveClip(d.id, barAt);
-      // Resize logic removed
+      const laneAt = Math.max(0, Math.min(NUM_LANES - 1, Math.floor(relY / LANE_H)));
+      if (d.mode === 'move') {
+        moveClip(d.id, barAt);
+        moveClipToLane(d.id, laneAt);
+      }
       return d;
     });
   };
@@ -148,65 +153,159 @@ export default function Playlist() {
     return () => window.removeEventListener('keydown', onKey);
   }, [clips, arrangementBars]);
 
+  // Click on lane header or empty area to select lane
+  const onLaneClick = (laneIndex: number) => {
+    setSelectedLane(laneIndex);
+  };
+
   return (
-    <section style={{ display:'flex', flexDirection:'column', height: '100%' }}>
-      <div style={{ padding: 8, display: 'flex', gap: 12, alignItems: 'center', background: '#0b1220', borderBottom: '1px solid #1e293b' }}>
-        <select value={selectedInst} onChange={handleInstChange} style={{ padding:6, borderRadius:6 }}>
+    <section style={{ display:'flex', flexDirection:'column', height: '100%', background: '#0a1628' }}>
+      <div style={{ padding: 8, display: 'flex', gap: 12, alignItems: 'center', background: '#0b1220', borderBottom: `1px solid ${primary}33`, flexWrap: 'wrap' }}>
+        <select value={selectedInst} onChange={handleInstChange} style={{ padding:6, borderRadius:6, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }}>
           {piList.length ? piList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'default'}>default</option>}
           <option value="___NEW___">+ New Pattern...</option>
         </select>
-        <button onClick={addSelectedPiano} style={{ padding:'6px 10px' }}>+ Add Clip</button>
+        <button onClick={addSelectedPiano} style={{ padding:'6px 10px', borderRadius: 6, background: primary + '22', border: `1px solid ${primary}`, color: '#e2e8f0', cursor: 'pointer' }}>+ Add Melody</button>
         
-        <div style={{ width: 1, height: 20, background: '#1e293b', margin: '0 4px' }} />
+        <div style={{ width: 1, height: 20, background: primary + '44', margin: '0 4px' }} />
         
-        <select value={selectedDrum} onChange={handleDrumChange} style={{ padding:6, borderRadius:6 }}>
+        <select value={selectedDrum} onChange={handleDrumChange} style={{ padding:6, borderRadius:6, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }}>
           {drumList.length ? drumList.map(id => <option key={id} value={id}>{id}</option>) : <option value={'drums'}>drums</option>}
           <option value="___NEW___">+ New Drums...</option>
         </select>
-        <button onClick={addSelectedDrums} style={{ padding:'6px 10px' }}>+ Add Drums</button>
-        <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft: 'auto' }}>
-          <span>Bars:</span>
-          <input type="number" min={1} value={arrangementBars} onChange={e => setArrangementBars(Math.max(1, Number(e.target.value||1)))} style={{ width: 64, padding:'4px 6px', borderRadius:6 }} />
+        <button onClick={addSelectedDrums} style={{ padding:'6px 10px', borderRadius: 6, background: primary + '22', border: `1px solid ${primary}`, color: '#e2e8f0', cursor: 'pointer' }}>+ Add Drums</button>
+        
+        <div style={{ width: 1, height: 20, background: primary + '44', margin: '0 4px' }} />
+        
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize: 12 }}>
+          <span style={{ opacity: 0.7 }}>Lane:</span>
+          <span style={{ fontWeight: 600, color: primary }}>{selectedLane + 1}</span>
+        </div>
+        
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft: 'auto', fontSize: 12 }}>
+          <span style={{ opacity: 0.7 }}>Bars:</span>
+          <input type="number" min={1} value={arrangementBars} onChange={e => setArrangementBars(Math.max(1, Number(e.target.value||1)))} style={{ width: 56, padding:'4px 6px', borderRadius:6, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }} />
         </div>
       </div>
-      <div style={{ padding: '6px 10px', fontSize: 12, color: '#9aa7bd', background:'#0b1220' }}>
-        Tip: Drag clips to move. Shift+Click to multi-select. Delete removes, Ctrl+D duplicates. Double‑click to open editor. Right‑click toggles mute.
+      <div style={{ padding: '4px 10px', fontSize: 10, color: '#64748b', background:'#0b1220', borderBottom: '1px solid #1e293b22' }}>
+        Drag to move • Shift+Click multi-select • Del removes • Ctrl+D duplicates • Double-click edits • Right-click mutes
       </div>
-      <div ref={containerRef} style={{ flex:1, overflow: 'auto', background:'#071428', padding: 12 }} onMouseDown={() => clearSelection()}>
-        <div style={{ position:'relative', minWidth: arrangementBars*BAR_PX, height: LANE_H*2, border: '1px solid #1e293b', borderRadius: 6, background:'#0b1935' }}>
-          {Array.from({ length: arrangementBars }, (_, i) => (
-            <div key={i} style={{ position:'absolute', left: i*BAR_PX, top: 0, bottom: 0, width: 1, background:'#1e293b' }} />
-          ))}
-          {/* Playhead */}
-          <div style={{ position:'absolute', top:0, bottom:0, width:2, background: primary, opacity: 0.9, transform: `translateX(${(bar + (substep/48)) * BAR_PX}px)`, willChange:'transform', pointerEvents:'none' }} />
-          {clips.map((c) => (
-            <div key={c.id}
-              onMouseDown={(e) => onClipMouseDown(e, c.id)}
-              style={{ position:'absolute', left: c.startBar * BAR_PX, top: (c.sourceKind === 'drums' ? 8 : (LANE_H + 8)), width: c.lengthBars * BAR_PX - 6, height: LANE_H-16, background: c.muted ? '#475569' : (c.selected ? primary : primary + 'cc'), border: '1px solid ' + primary, borderRadius: 6, padding: '6px', boxSizing:'border-box', cursor:'grab', userSelect:'none' }}
-              onDoubleClick={() => {
-                if (c.sourceKind === 'piano') {
-                  // open piano editor for the instance id referenced by the clip
-                  const existing = windowsList.find(w => w.kind === 'pianoRoll' && (w as any).instanceId === c.sourceId);
-                  if (existing) bringToFront(existing.id); else addPianoWindow(c.sourceId);
-                } else if (c.sourceKind === 'drums') {
-                  // open step sequencer to edit drums
-                  const existing = windowsList.find(w => w.kind === 'stepSequencer' && (w as any).patternId === c.sourceId);
-                  if (existing) bringToFront(existing.id); else addStepSequencerWindow(c.sourceId);
-                }
-              }}
-              onContextMenu={(e) => { e.preventDefault(); setMuted(c.id, !c.muted); }}
-              title={`${c.sourceKind === 'drums' ? 'Drums' : c.sourceId} — Bar ${c.startBar} • ${c.lengthBars} bars`}
-            >
-              <div style={{ fontWeight: 700, pointerEvents:'none' }}>{c.sourceKind === 'drums' ? 'Drums' : c.sourceId}</div>
-              <div style={{ fontSize: 12, pointerEvents:'none' }}>Bar {c.startBar} • {c.lengthBars} bars</div>
-              {/* Resize handle removed to enforce fixed pattern length for now */}
-              <button
-                onMouseDown={(e) => { e.stopPropagation(); deleteClip(c.id); }}
-                style={{ position: 'absolute', top: 2, right: 12, width: 16, height: 16, background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-                title="Delete clip"
-              >×</button>
-            </div>
-          ))}
+      <div ref={containerRef} style={{ flex:1, overflow: 'auto', background:'#071428' }} onMouseDown={() => clearSelection()}>
+        <div style={{ display: 'flex', minHeight: LANE_H * NUM_LANES }}>
+          {/* Lane headers */}
+          <div style={{ width: 50, flexShrink: 0, background: '#0b1220', borderRight: '1px solid #1e293b' }}>
+            {Array.from({ length: NUM_LANES }, (_, i) => (
+              <div 
+                key={i} 
+                onClick={() => onLaneClick(i)}
+                style={{ 
+                  height: LANE_H, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: 10, 
+                  color: selectedLane === i ? primary : '#64748b',
+                  background: selectedLane === i ? '#1e293b' : 'transparent',
+                  borderBottom: '1px solid #1e293b',
+                  cursor: 'pointer',
+                  fontWeight: selectedLane === i ? 600 : 400,
+                }}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+          {/* Grid area */}
+          <div style={{ position:'relative', minWidth: Math.max(arrangementBars * BAR_PX, 2000), flex: 1 }}>
+            {/* Lane backgrounds */}
+            {Array.from({ length: NUM_LANES }, (_, i) => (
+              <div 
+                key={`lane-${i}`} 
+                onClick={() => onLaneClick(i)}
+                style={{ 
+                  position: 'absolute', 
+                  left: 0, 
+                  right: 0, 
+                  top: i * LANE_H, 
+                  height: LANE_H, 
+                  background: i % 2 === 0 ? '#0b1935' : '#0a1628',
+                  borderBottom: '1px solid #1e293b',
+                  cursor: 'pointer',
+                }} 
+              />
+            ))}
+            {/* Bar lines - render plenty to fill visible area */}
+            {Array.from({ length: Math.max(32, arrangementBars + 16) }, (_, i) => (
+              <div 
+                key={i} 
+                style={{ 
+                  position:'absolute', 
+                  left: i*BAR_PX, 
+                  top: 0, 
+                  bottom: 0, 
+                  width: 1, 
+                  background: i < arrangementBars 
+                    ? (i % 4 === 0 ? '#334155' : '#1e293b') 
+                    : (i % 4 === 0 ? '#1e293b55' : '#1e293b33'),
+                  zIndex: 1 
+                }} 
+              />
+            ))}
+            {/* Loop end marker */}
+            <div style={{ 
+              position:'absolute', 
+              left: arrangementBars * BAR_PX - 2, 
+              top: 0, 
+              bottom: 0, 
+              width: 3, 
+              background: primary + '66',
+              zIndex: 1,
+              borderRight: `2px dashed ${primary}`,
+            }} />
+            {/* Playhead */}
+            <div style={{ position:'absolute', top:0, bottom:0, width:2, background: primary, opacity: 0.9, transform: `translateX(${(bar + (substep/48)) * BAR_PX}px)`, willChange:'transform', pointerEvents:'none', zIndex: 3 }} />
+            {/* Clips */}
+            {clips.map((c) => (
+              <div key={c.id}
+                onMouseDown={(e) => { e.stopPropagation(); onClipMouseDown(e, c.id); }}
+                style={{ 
+                  position:'absolute', 
+                  left: c.startBar * BAR_PX + 2, 
+                  top: (c.lane ?? 0) * LANE_H + 4, 
+                  width: c.lengthBars * BAR_PX - 4, 
+                  height: LANE_H - 8, 
+                  background: c.muted ? '#475569' : (c.selected ? primary : primary + 'cc'), 
+                  border: '1px solid ' + primary, 
+                  borderRadius: 4, 
+                  padding: '4px 6px', 
+                  boxSizing:'border-box', 
+                  cursor: drag ? 'grabbing' : 'grab', 
+                  userSelect:'none',
+                  zIndex: 2,
+                  overflow: 'hidden',
+                }}
+                onDoubleClick={() => {
+                  // FL Studio-style: open singleton editor and switch to this pattern
+                  if (c.sourceKind === 'piano') {
+                    openPianoRoll(c.sourceId);
+                  } else if (c.sourceKind === 'drums') {
+                    openStepSequencer(c.sourceId);
+                  }
+                }}
+                onContextMenu={(e) => { e.preventDefault(); setMuted(c.id, !c.muted); }}
+                title={`${c.sourceKind === 'drums' ? 'Drums' : 'Melody'}: ${c.sourceId} — Bar ${c.startBar} • Lane ${(c.lane ?? 0) + 1}`}
+              >
+                <div style={{ fontWeight: 600, fontSize: 11, pointerEvents:'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {c.sourceKind === 'drums' ? '🥁' : '🎹'} {c.sourceId}
+                </div>
+                <button
+                  onMouseDown={(e) => { e.stopPropagation(); deleteClip(c.id); }}
+                  style={{ position: 'absolute', top: 2, right: 2, width: 14, height: 14, background: 'rgba(0,0,0,0.4)', border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  title="Delete clip"
+                >×</button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

@@ -5,7 +5,6 @@ import { useSnap } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";
 import { useProject } from "../../store/project";
 import { useTheme, PRESET_COLORS } from "../../store/theme";
-import { useWindows } from "../../store/windows";
 
 export default function Transport() {
   const [audioReady, setAudioReady] = useState(false);
@@ -22,8 +21,6 @@ export default function Transport() {
   const snap = useSnap((s) => s.snap);
   const setSnap = useSnap((s) => s.setSnap);
   const playing = usePlayhead((s) => s.playing);
-  const addPianoWindow = useWindows((s) => s.addPianoWindow);
-  const addPlaylistWindow = useWindows((s) => s.addPlaylistWindow);
 
   useEffect(() => {
     engine.setTempo(bpm);
@@ -74,23 +71,43 @@ export default function Transport() {
     engine.play();
   }
 
+  const btnStyle: React.CSSProperties = {
+    padding: '6px 12px',
+    borderRadius: 6,
+    background: '#1e293b',
+    border: `1px solid ${primary}55`,
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    fontSize: 12,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    background: '#1e293b',
+    border: `1px solid ${primary}44`,
+    color: '#e2e8f0',
+    borderRadius: 6,
+    padding: '4px 8px',
+  };
+
   return (
     <section style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-      <button onClick={onPlay} style={{ padding: 8, borderRadius: 8 }}>
-        Play
+      <button onClick={onPlay} style={{ ...btnStyle, background: playing ? primary + '33' : '#1e293b', border: `1px solid ${primary}` }}>
+        {playing ? '▶ Playing' : '▶ Play'}
       </button>
-      <button onClick={() => engine.stop()} style={{ padding: 8, borderRadius: 8 }}>
-        Stop
+      <button onClick={() => engine.stop()} style={btnStyle}>
+        ⬛ Stop
       </button>
 
-      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        Tempo: <strong>{bpm}</strong>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+        <span style={{ opacity: 0.7 }}>Tempo:</span>
+        <strong style={{ color: primary }}>{bpm}</strong>
         <input
           type="range"
           min={30}
           max={300}
           value={bpm}
           onChange={(e) => setBpm(parseInt(e.target.value, 10))}
+          style={{ accentColor: primary }}
         />
         <input
           type="number"
@@ -101,7 +118,7 @@ export default function Transport() {
             const v = Number(e.target.value);
             if (!Number.isNaN(v)) setBpm(Math.max(30, Math.min(300, Math.round(v))));
           }}
-          style={{ width: 64, marginLeft: 8, padding: "2px 6px", borderRadius: 6 }}
+          style={{ ...inputStyle, width: 56 }}
           title="Type tempo (BPM)"
         />
         <button
@@ -125,27 +142,26 @@ export default function Transport() {
               setTapBpm(null);
             }, 2000);
           }}
-          style={{ padding: "4px 8px", borderRadius: 6 }}
+          style={btnStyle}
           title="Tap tempo"
         >
           Tap
         </button>
         {tapBpm ? (
-          <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.8 }}>
-            Tapped: <strong>{tapBpm}</strong> BPM
+          <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.8 }}>
+            <strong style={{ color: primary }}>{tapBpm}</strong> BPM
           </span>
         ) : null}
       </label>
 
-      {/* Partner's UI structure with Playlist button added */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
-          <input type="checkbox" checked={metOn} onChange={e => { setMetOn(e.target.checked); engine.setMetronomeEnabled(e.target.checked); }} />
+          <input type="checkbox" checked={metOn} onChange={e => { setMetOn(e.target.checked); engine.setMetronomeEnabled(e.target.checked); }} style={{ accentColor: primary }} />
           Metronome
         </label>
         <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
-          Snap
-          <select value={snap} onChange={e => setSnap(e.target.value as any)} style={{ padding: '2px 6px' }}>
+          <span style={{ opacity: 0.7 }}>Snap</span>
+          <select value={snap} onChange={e => setSnap(e.target.value as any)} style={{ ...inputStyle, padding: '2px 6px' }}>
             <option value="1/4">1/4</option>
             <option value="1/8">1/8</option>
             <option value="1/16">1/16</option>
@@ -156,41 +172,27 @@ export default function Transport() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 12, opacity: .8 }}>Theme:</span>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 280 }}>
+        <span style={{ fontSize: 11, opacity: .7 }}>Theme:</span>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {PRESET_COLORS.map(c => (
             <button
               key={c.value}
               onClick={() => setPrimary(c.value)}
               title={c.name}
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                border: c.value === primary ? '2px solid #fff' : '2px solid #1e293b',
+                width: 22,
+                height: 22,
+                borderRadius: 4,
+                border: c.value === primary ? '2px solid #fff' : '1px solid #1e293b',
                 background: c.value,
                 cursor: 'pointer',
-                boxShadow: c.value === primary ? '0 0 0 2px rgba(255,255,255,0.3)' : 'none'
+                boxShadow: c.value === primary ? '0 0 0 2px rgba(255,255,255,0.2)' : 'none'
               }}
             />
           ))}
         </div>
       </div>
 
-      {/* Window Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => addPianoWindow()}
-          style={{ padding: '6px 10px', borderRadius: 6 }}
-          title="Add Piano Roll"
-        >+ Piano Roll</button>
-        
-        <button
-          onClick={() => addPlaylistWindow()}
-          style={{ padding: '6px 10px', borderRadius: 6 }}
-          title="Add Playlist"
-        >+ Playlist</button>
-      </div>
     </section>
   );
 }

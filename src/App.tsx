@@ -1,45 +1,70 @@
 // src/App.tsx
+import { useEffect } from "react";
 import { useWindows } from "./store/windows";
 import { WindowFrame } from "./components/windows/WindowFrame";
 import PlaylistBridge from './components/playlist/PlaylistBridge';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { usePianoInstances } from "./store/pianoInstances";
+import { useDrumPatterns } from "./store/drumPatterns";
+import { useTheme } from "./store/theme";
 
 import SampleBrowser from "./components/rack/SampleBrowser";
 import Transport from "./components/transport/Transport";
 import Visualizer from "./components/visualizer/Visualizer";
+import Playlist from "./components/playlist/Playlist";
 
 
 export default function App() {
   const windows = useWindows((s) => s.windows);
+  
+  // Initialize default patterns on first load
+  const createPianoInstance = usePianoInstances(s => s.createInstance);
+  const createDrumPattern = useDrumPatterns(s => s.createPattern);
+  
+  useEffect(() => {
+    createPianoInstance('default');
+    createDrumPattern('drums');
+  }, []);
 
-  // Toggle handlers
-  const addStep = useWindows(s => s.addStepSequencerWindow);
-  const addPiano = useWindows(s => s.addPianoWindow);
+  // Toggle handlers - use FL Studio-style singleton openers for editors
+  const openStep = useWindows(s => s.openStepSequencer);
+  const openPiano = useWindows(s => s.openPianoRoll);
   const addKeys = useWindows(s => s.addKeyboardWindow);
   const addMixer = useWindows(s => s.addMixerWindow);
   const closeByKind = useWindows(s => s.closeByKind);
   const hasKind = useWindows(s => s.hasKind);
 
-  const toggle = (kind: string, addFn: () => string) => {
+  const toggle = (kind: string, addFn: () => void) => {
     if (hasKind(kind as any)) closeByKind(kind as any);
     else addFn();
   };
 
-  // Floating windows area (only dynamic kinds)
+  // Get theme color
+  const primary = useTheme(s => s.primary);
+
+  // Floating windows area (exclude playlist - it's now a fixed panel)
   const floating = windows.filter(w =>
     w.kind !== "settings" &&
     w.kind !== "visualizer" &&
-    w.kind !== "sampleBrowser"
+    w.kind !== "sampleBrowser" &&
+    w.kind !== "playlist"
   );
 
   const btnStyle: React.CSSProperties = {
     padding: "6px 10px",
     borderRadius: 6,
-    background: "#334155",
-    border: "1px solid #64748b",
+    background: "#1e293b",
+    border: `1px solid ${primary}55`,
     color: "#e2e8f0",
     fontSize: 12,
-    cursor: "pointer"
+    cursor: "pointer",
+    transition: "all 0.15s",
+  };
+
+  const btnActiveStyle: React.CSSProperties = {
+    ...btnStyle,
+    background: primary + "33",
+    border: `1px solid ${primary}`,
   };
 
   return (
@@ -87,28 +112,28 @@ export default function App() {
           <h1 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Mini-DAW</h1>
           <div style={{ display: "flex", gap: 8 }}>
             <button
-              style={btnStyle}
-              onClick={() => toggle("stepSequencer", addStep)}
+              style={hasKind("stepSequencer") ? btnActiveStyle : btnStyle}
+              onClick={() => toggle("stepSequencer", openStep)}
             >
-              {hasKind("stepSequencer") ? "Hide Step Seq" : "Show Step Seq"}
+              {hasKind("stepSequencer") ? "✓ Step Seq" : "Step Seq"}
             </button>
             <button
-              style={btnStyle}
-              onClick={() => toggle("pianoRoll", addPiano)}
+              style={hasKind("pianoRoll") ? btnActiveStyle : btnStyle}
+              onClick={() => toggle("pianoRoll", openPiano)}
             >
-              {hasKind("pianoRoll") ? "Hide Piano Roll" : "Show Piano Roll"}
+              {hasKind("pianoRoll") ? "✓ Piano Roll" : "Piano Roll"}
             </button>
             <button
-              style={btnStyle}
+              style={hasKind("keyboard") ? btnActiveStyle : btnStyle}
               onClick={() => toggle("keyboard", addKeys)}
             >
-              {hasKind("keyboard") ? "Hide Keyboard" : "Show Keyboard"}
+              {hasKind("keyboard") ? "✓ Keyboard" : "Keyboard"}
             </button>
             <button
-              style={btnStyle}
+              style={hasKind("mixer") ? btnActiveStyle : btnStyle}
               onClick={() => toggle("mixer", addMixer)}
             >
-              {hasKind("mixer") ? "Hide Mixer" : "Show Mixer"}
+              {hasKind("mixer") ? "✓ Mixer" : "Mixer"}
             </button>
           </div>
         </div>
@@ -123,7 +148,7 @@ export default function App() {
       {/* Bridge that feeds playlist arrangement into engine */}
       <PlaylistBridge />
 
-      {/* Floating Windows Workspace */}
+      {/* Main Workspace: Playlist as fixed background (FL Studio style) */}
       <div
         style={{
           position: "absolute",
@@ -132,13 +157,23 @@ export default function App() {
           right: 0,
           bottom: 0,
           overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <ErrorBoundary>
+        {/* Playlist fills the background */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <ErrorBoundary>
+            <Playlist />
+          </ErrorBoundary>
+          
+          {/* Floating windows rendered on top of playlist */}
           {floating.map((w) => (
-            <WindowFrame key={w.id} id={w.id} />
+            <ErrorBoundary key={w.id}>
+              <WindowFrame id={w.id} />
+            </ErrorBoundary>
           ))}
-        </ErrorBoundary>
+        </div>
       </div>
     </div>
   );
