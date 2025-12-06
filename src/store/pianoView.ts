@@ -10,6 +10,11 @@ interface PianoViewState {
   zoomOutV: () => void;
   zoomInH: () => void;
   zoomOutH: () => void;
+
+  // Persist scroll positions per piano instance/pattern id
+  scroll: Record<string, { left: number; top: number }>;
+  setScroll: (id: string, left: number, top: number) => void;
+  getScroll: (id: string) => { left: number; top: number } | undefined;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -23,4 +28,14 @@ export const usePianoView = create<PianoViewState>((set) => ({
   zoomOutV: () => set(s => ({ vZoom: clamp(s.vZoom / 1.15, 0.5, 3) })),
   zoomInH: () => set(s => ({ hZoom: clamp(s.hZoom * 1.15, 0.5, 3) })),
   zoomOutH: () => set(s => ({ hZoom: clamp(s.hZoom / 1.15, 0.5, 3) })),
+
+  // New: scroll persistence
+  scroll: {},
+  setScroll: (id, left, top) => set(s => ({
+    scroll: { ...s.scroll, [id]: { left: Math.max(0, left), top: Math.max(0, top) } }
+  })),
+  getScroll: (id) => {
+    const s = usePianoView.getState();
+    return s.scroll[id];
+  },
 }));

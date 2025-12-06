@@ -139,6 +139,7 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
   }, [notes, id, instances]);
 
   const [containerRef] = useElementSize<HTMLDivElement>();
+  const scrollRef = useRef<HTMLDivElement | null>(null); // <-- scroll container
   const vZoom = usePianoView((s: { vZoom: number }) => s.vZoom);
   const hZoom = usePianoView((s: { hZoom: number }) => s.hZoom);
   const { zoomInV, zoomOutV, zoomInH, zoomOutH } = usePianoView.getState();
@@ -275,6 +276,28 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
     );
   }
 
+  // Restore saved scroll position when this piano roll mounts or id changes
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = usePianoView.getState().getScroll(id);
+    if (saved) {
+      el.scrollLeft = saved.left;
+      el.scrollTop = saved.top;
+    }
+  }, [id]);
+
+  // Persist scroll position on scroll
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      usePianoView.getState().setScroll(id, el.scrollLeft, el.scrollTop);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [id]);
+
   return (
     <section ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 4px', flexWrap: 'wrap' }}>
@@ -325,7 +348,10 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
         </div>
       </div>
       
-      <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'auto', background: '#0f172a', border: '1px solid #1e293b' }}>
+      <div
+        ref={scrollRef}
+        style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'auto', background: '#0f172a', border: '1px solid #1e293b' }}
+      >
         {/* Keyboard labels */}
         <div style={{ position: 'sticky', left: 0, zIndex: 2 }}>
           {ROW_PITCHES.map((p) => (
