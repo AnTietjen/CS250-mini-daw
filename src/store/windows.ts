@@ -44,6 +44,7 @@ interface WindowsStore {
   addPlaylistWindow: () => string;
   addVisualizerWindow: () => string;
   addSampleBrowserWindow: () => string;
+  addKeyboardWindow: () => string; // <-- add this
 
   // Singleton openers
   openPianoRoll: (instanceId?: string) => void;
@@ -336,6 +337,31 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           title: "Sample Browser",
           x: 180,
           y: 180,
+          w: size.w,
+          h: size.h,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  // Create a Keyboard window (typing keyboard)
+  addKeyboardWindow: () => {
+    const state = get();
+    const size = state.lastSizes['keyboard'] ?? { w: 600, h: 240 };
+    const id = `${'win-keys'}-${Math.random().toString(36).slice(2, 7)}`;
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "keyboard",
+          title: "Keyboard",
+          x: 160,
+          y: 160,
           w: size.w,
           h: size.h,
           z: s.nextZ,
