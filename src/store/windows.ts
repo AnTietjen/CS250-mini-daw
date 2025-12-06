@@ -31,22 +31,25 @@ interface WindowsStore {
   nextZ: number;
   // Cache last sizes per window kind
   lastSizes: Partial<Record<WindowKind, { w: number; h: number }>>;
+  // Cache last positions per window kind
+  lastPositions: Partial<Record<WindowKind, { x: number; y: number }>>;
+
   bringToFront: (id: string) => void;
   move: (id: string, x: number, y: number) => void;
   resize: (id: string, w: number, h: number) => void;
   toggleMin: (id: string) => void;
   closeWindow: (id: string) => void;
 
-  // Creation helpers (legacy, still used for other window types)
+  // Creation helpers (multi-instance where applicable)
   addMixerWindow: () => string;
-  addPianoWindow: (instanceId?: string) => string;
-  addStepSequencerWindow: (patternId?: string) => string;
+  addPianoWindow: (instanceId?: string) => string;           // legacy multi-instance
+  addStepSequencerWindow: (patternId?: string) => string;    // legacy multi-instance
   addPlaylistWindow: () => string;
   addVisualizerWindow: () => string;
   addSampleBrowserWindow: () => string;
-  addKeyboardWindow: () => string; // <-- add this
+  addKeyboardWindow: () => string;
 
-  // Singleton openers
+  // Singleton openers (prefer these for editors)
   openPianoRoll: (instanceId?: string) => void;
   openStepSequencer: (patternId?: string) => void;
 
@@ -70,37 +73,39 @@ export const useWindows = create<WindowsStore>((set, get) => ({
   windows: [
     { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
   ],
-  nextZ: 8,
+  nextZ: 2,
   lastSizes: {},
+  lastPositions: {},
 
   bringToFront: (id) =>
+    set((s) => ({
+      windows: s.windows.map((w) => (w.id === id ? { ...w, z: s.nextZ } : w)),
+      nextZ: s.nextZ + 1,
+    })),
+
+  move: (id, x, y) =>
     set((s) => {
-      const z = s.nextZ;
+      const win = s.windows.find((w) => w.id === id);
+      const kind = win?.kind;
       return {
-        windows: s.windows.map((w) => (w.id === id ? { ...w, z } : w)),
-        nextZ: z + 1,
+        windows: s.windows.map((w) => (w.id === id ? { ...w, x, y } : w)),
+        lastPositions: kind ? { ...s.lastPositions, [kind]: { x, y } } : s.lastPositions,
       };
     }),
 
-  move: (id, x, y) =>
-    set((s) => ({
-      windows: s.windows.map((w) => (w.id === id ? { ...w, x, y } : w)),
-    })),
-
   resize: (id, w, h) =>
-    set((s) => ({
-      windows: s.windows.map((win) =>
-        win.id === id
-          ? { ...win, w: Math.max(200, w), h: Math.max(120, h) }
-          : win
-      ),
-      // Persist the latest size per kind
-      lastSizes: (() => {
-        const win = s.windows.find((w) => w.id === id);
-        if (!win) return s.lastSizes;
-        return { ...s.lastSizes, [win.kind]: { w: Math.max(200, w), h: Math.max(120, h) } };
-      })(),
-    })),
+    set((s) => {
+      const win = s.windows.find((w) => w.id === id);
+      const kind = win?.kind;
+      const W = Math.max(200, w);
+      const H = Math.max(120, h);
+      return {
+        windows: s.windows.map((win) =>
+          win.id === id ? { ...win, w: W, h: H } : win
+        ),
+        lastSizes: kind ? { ...s.lastSizes, [kind]: { w: W, h: H } } : s.lastSizes,
+      };
+    }),
 
   toggleMin: (id) =>
     set((s) => ({
@@ -114,24 +119,23 @@ export const useWindows = create<WindowsStore>((set, get) => ({
       windows: s.windows.filter((w) => w.id !== id),
     })),
 
-  // FL Studio-style: open singleton piano roll, switch to instance if provided
-  openPianoRoll: (instanceId?: string) => {
+  // Singleton piano roll (reopen at last position)
+  openPianoRoll: (instanceId) => {
     const state = get();
-    const existing = state.windows.find(w => w.kind === 'pianoRoll');
+    const existing = state.windows.find(w => w.kind === "pianoRoll");
+    const pos = state.lastPositions["pianoRoll"] ?? { x: 80, y: 100 };
     if (existing) {
-      // Already open - bring to front and switch instance
       set(s => ({
-        windows: s.windows.map(w => 
-          w.id === existing.id 
-            ? { ...w, z: s.nextZ, minimized: false, instanceId: instanceId ?? w.instanceId }
+        windows: s.windows.map(w =>
+          w.id === existing.id
+            ? { ...w, z: s.nextZ, minimized: false, instanceId: instanceId ?? w.instanceId, x: pos.x, y: pos.y }
             : w
         ),
         nextZ: s.nextZ + 1,
       }));
     } else {
-      // Create new
-      const size = state.lastSizes['pianoRoll'] ?? { w: 1000, h: 600 };
-      const id = `${'win-piano'}-${Math.random().toString(36).slice(2, 7)}`;
+      const size = state.lastSizes["pianoRoll"] ?? { w: 1000, h: 600 };
+      const id = makeId("win-piano");
       set(s => ({
         windows: [
           ...s.windows,
@@ -139,8 +143,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
             id,
             kind: "pianoRoll",
             title: "Piano Roll",
-            x: 80,
-            y: 100,
+            x: pos.x,
+            y: pos.y,
             w: size.w,
             h: size.h,
             z: s.nextZ,
@@ -153,24 +157,23 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     }
   },
 
-  // FL Studio-style: open singleton step sequencer, switch to pattern if provided
-  openStepSequencer: (patternId?: string) => {
+  // Singleton step sequencer (reopen at last position)
+  openStepSequencer: (patternId) => {
     const state = get();
-    const existing = state.windows.find(w => w.kind === 'stepSequencer');
+    const existing = state.windows.find(w => w.kind === "stepSequencer");
+    const pos = state.lastPositions["stepSequencer"] ?? { x: 40, y: 40 };
     if (existing) {
-      // Already open - bring to front and switch pattern
       set(s => ({
-        windows: s.windows.map(w => 
-          w.id === existing.id 
-            ? { ...w, z: s.nextZ, minimized: false, patternId: patternId ?? w.patternId }
+        windows: s.windows.map(w =>
+          w.id === existing.id
+            ? { ...w, z: s.nextZ, minimized: false, patternId: patternId ?? w.patternId, x: pos.x, y: pos.y }
             : w
         ),
         nextZ: s.nextZ + 1,
       }));
     } else {
-      // Create new
-      const size = state.lastSizes['stepSequencer'] ?? { w: 700, h: 240 };
-      const id = `${'win-step'}-${Math.random().toString(36).slice(2, 7)}`;
+      const size = state.lastSizes["stepSequencer"] ?? { w: 700, h: 240 };
+      const id = makeId("win-step");
       set(s => ({
         windows: [
           ...s.windows,
@@ -178,8 +181,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
             id,
             kind: "stepSequencer",
             title: "Step Sequencer",
-            x: 40,
-            y: 40,
+            x: pos.x,
+            y: pos.y,
             w: size.w,
             h: size.h,
             z: s.nextZ,
@@ -192,20 +195,12 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     }
   },
 
-  setEditorInstance: (windowId, instanceId) =>
-    set(s => ({
-      windows: s.windows.map(w => w.id === windowId ? { ...w, instanceId } : w),
-    })),
-
-  setEditorPattern: (windowId, patternId) =>
-    set(s => ({
-      windows: s.windows.map(w => w.id === windowId ? { ...w, patternId } : w),
-    })),
-
+  // Multi-instance creators (use lastSizes; positions are default)
   addMixerWindow: () => {
     const state = get();
-    const size = state.lastSizes['mixer'] ?? { w: 1200, h: 600 };
-    const id = `${'win-mix'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["mixer"] ?? { w: 1200, h: 600 };
+    const pos = state.lastPositions["mixer"] ?? { x: 140, y: 100 };
+    const id = makeId("win-mix");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -213,8 +208,33 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "mixer",
           title: "Mixer",
-          x: 140,
-          y: 100,
+          x: pos.x,
+          y: pos.y,
+          w: size.w,
+          h: size.h,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
+  addKeyboardWindow: () => {
+    const state = get();
+    const size = state.lastSizes["keyboard"] ?? { w: 600, h: 240 };
+    const pos = state.lastPositions["keyboard"] ?? { x: 160, y: 160 };
+    const id = makeId("win-keys");
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "keyboard",
+          title: "Keyboard",
+          x: pos.x,
+          y: pos.y,
           w: size.w,
           h: size.h,
           z: s.nextZ,
@@ -228,8 +248,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   addPianoWindow: (instanceId?: string) => {
     const state = get();
-    const size = state.lastSizes['pianoRoll'] ?? { w: 560, h: 360 };
-    const id = `${'win-piano'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["pianoRoll"] ?? { w: 560, h: 360 };
+    const id = makeId("win-piano");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -253,8 +273,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   addStepSequencerWindow: (patternId?: string) => {
     const state = get();
-    const size = state.lastSizes['stepSequencer'] ?? { w: 560, h: 240 };
-    const id = `${'win-step'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["stepSequencer"] ?? { w: 560, h: 240 };
+    const id = makeId("win-step");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -278,8 +298,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   addPlaylistWindow: () => {
     const state = get();
-    const size = state.lastSizes['playlist'] ?? { w: 720, h: 300 };
-    const id = `${'win-playlist'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["playlist"] ?? { w: 720, h: 300 };
+    const id = makeId("win-playlist");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -302,8 +322,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   addVisualizerWindow: () => {
     const state = get();
-    const size = state.lastSizes['visualizer'] ?? { w: 520, h: 240 };
-    const id = `${'win-vis'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["visualizer"] ?? { w: 520, h: 240 };
+    const id = makeId("win-vis");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -326,8 +346,8 @@ export const useWindows = create<WindowsStore>((set, get) => ({
 
   addSampleBrowserWindow: () => {
     const state = get();
-    const size = state.lastSizes['sampleBrowser'] ?? { w: 400, h: 320 };
-    const id = `${'win-sample'}-${Math.random().toString(36).slice(2, 7)}`;
+    const size = state.lastSizes["sampleBrowser"] ?? { w: 400, h: 320 };
+    const id = makeId("win-sample");
     set((s) => ({
       windows: [
         ...s.windows,
@@ -348,30 +368,16 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     return id;
   },
 
-  // Create a Keyboard window (typing keyboard)
-  addKeyboardWindow: () => {
-    const state = get();
-    const size = state.lastSizes['keyboard'] ?? { w: 600, h: 240 };
-    const id = `${'win-keys'}-${Math.random().toString(36).slice(2, 7)}`;
-    set((s) => ({
-      windows: [
-        ...s.windows,
-        {
-          id,
-          kind: "keyboard",
-          title: "Keyboard",
-          x: 160,
-          y: 160,
-          w: size.w,
-          h: size.h,
-          z: s.nextZ,
-          minimized: false,
-        },
-      ],
-      nextZ: s.nextZ + 1,
-    }));
-    return id;
-  },
+  // Set editor instance/pattern on a specific window
+  setEditorInstance: (windowId: string, instanceId: string) =>
+    set(s => ({
+      windows: s.windows.map(w => w.id === windowId ? { ...w, instanceId } : w)
+    })),
+
+  setEditorPattern: (windowId: string, patternId: string) =>
+    set(s => ({
+      windows: s.windows.map(w => w.id === windowId ? { ...w, patternId } : w)
+    })),
 
   hasKind: (kind) => get().windows.some(w => w.kind === kind),
   closeByKind: (kind) => set((s) => ({ windows: s.windows.filter(w => w.kind !== kind) })),
