@@ -26,7 +26,7 @@ export default function Transport() {
     engine.setTempo(bpm);
   }, [bpm]);
 
-  // Spacebar: always play/stop. Prevent every other default action.
+  // Spacebar: pause/resume for instant resume; Prevent defaults.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -39,7 +39,7 @@ export default function Transport() {
           });
           return;
         }
-        if (playing) engine.stop();
+        if (playing) engine.pause(); // use pause to resume instantly
         else engine.play();
       }
     };
@@ -94,8 +94,21 @@ export default function Transport() {
       <button onClick={onPlay} style={{ ...btnStyle, background: playing ? primary + '33' : '#1e293b', border: `1px solid ${primary}` }}>
         {playing ? '▶ Playing' : '▶ Play'}
       </button>
-      <button onClick={() => engine.stop()} style={btnStyle}>
-        ⬛ Stop
+      <button onClick={() => engine.pause()} style={btnStyle} title="Pause (Space)">
+        ⏸ Pause
+      </button>
+      <button
+        onClick={() => {
+          // Ensure audio is initialized, then reset transport to start
+          if (!audioReady) {
+            engine.startAudio().then(() => setAudioReady(true)).catch(() => {});
+          }
+          engine.resetToStart();
+        }}
+        style={btnStyle}
+        title="Reset to start"
+      >
+        ⏮ Reset
       </button>
 
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>

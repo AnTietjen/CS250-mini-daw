@@ -43,30 +43,54 @@ export default function Playlist() {
   
   const drumPatterns = useDrumPatterns(s => s.patterns);
   const createDrumPattern = useDrumPatterns(s => s.createPattern);
-  const drumList = useMemo(() => Object.keys(drumPatterns).length ? Object.keys(drumPatterns) : ['drums'], [drumPatterns]);
+  const drumList = useMemo(() => Object.keys(drumPatterns).length ? Object.keys(drumPatterns) : ['Drum Clip 1'], [drumPatterns]);
+
+  // Helpers: next "Melody Clip N" and "Drum Clip N"
+  const nextMelodyName = useMemo(() => {
+    const base = "Melody Clip ";
+    const nums = piList
+      .map(id => {
+        const m = id.startsWith(base) ? Number(id.slice(base.length)) : NaN;
+        return Number.isFinite(m) ? m : null;
+      })
+      .filter((n): n is number => n !== null);
+    const max = nums.length ? Math.max(...nums) : 1;
+    return `${base}${max + 1}`;
+  }, [piList]);
+  const nextDrumName = useMemo(() => {
+    const base = "Drum Clip ";
+    const nums = drumList
+      .map(id => {
+        const m = id.startsWith(base) ? Number(id.slice(base.length)) : NaN;
+        return Number.isFinite(m) ? m : null;
+      })
+      .filter((n): n is number => n !== null);
+    const max = nums.length ? Math.max(...nums) : 1;
+    return `${base}${max + 1}`;
+  }, [drumList]);
 
   useEffect(() => {
     if (piList.length && !piList.includes(selectedInst)) setSelectedInst(piList[0]);
   }, [piList]);
-  const [selectedInst, setSelectedInst] = useState<string>(piList[0] ?? 'default');
+  const [selectedInst, setSelectedInst] = useState<string>(piList[0] ?? 'Melody Clip 1');
 
   useEffect(() => {
     if (drumList.length && !drumList.includes(selectedDrum)) setSelectedDrum(drumList[0]);
   }, [drumList]);
-  const [selectedDrum, setSelectedDrum] = useState<string>(drumList[0] ?? 'drums');
+  const [selectedDrum, setSelectedDrum] = useState<string>(drumList[0] ?? 'Drum Clip 1');
   const [selectedLane, setSelectedLane] = useState<number>(0);
   
   const addSelectedPiano = () => {
     // Add at selected lane, find first empty bar
     const laneClips = clips.filter(c => (c.lane ?? 0) === selectedLane);
     const maxBar = laneClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'default', startBar: maxBar, lengthBars: 1, lane: selectedLane });
+    addClip({ sourceKind: 'piano', sourceId: selectedInst || 'Melody Clip 1', startBar: maxBar, lengthBars: 1, lane: selectedLane });
   }
 
   const handleInstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === '___NEW___') {
-      const newId = `pat-${Math.floor(Math.random()*10000)}`;
+      const newId = nextMelodyName;
       createInstance(newId);
       setSelectedInst(newId);
     } else {
@@ -78,13 +102,13 @@ export default function Playlist() {
     // Add at selected lane, find first empty bar
     const laneClips = clips.filter(c => (c.lane ?? 0) === selectedLane);
     const maxBar = laneClips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'drums', startBar: maxBar, lengthBars: 1, lane: selectedLane });
+    addClip({ sourceKind: 'drums', sourceId: selectedDrum || 'Drum Clip 1', startBar: maxBar, lengthBars: 1, lane: selectedLane });
   }
 
   const handleDrumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === '___NEW___') {
-      const newId = `drums-${Math.floor(Math.random()*10000)}`;
+      const newId = nextDrumName;
       createDrumPattern(newId);
       setSelectedDrum(newId);
     } else {

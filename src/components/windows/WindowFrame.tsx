@@ -139,9 +139,10 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
   const getInst = usePianoInstances(s => s.instances[instId]);
   useEffect(() => {
     if (win.kind === "pianoRoll") {
+      // Do not create instances tied to window IDs; rely on named instances only
+      const instId = (win as any).instanceId ?? 'Melody Clip 1';
       createInstance(instId);
-      // Ensure engine synth and initialize with stored params if present
-      engine.ensureInstanceSynth(win.id);
+      engine.ensureInstanceSynth(instId);
       const wave = getInst?.wave ?? 'sawtooth';
       const volume = getInst?.volume ?? 0.8;
       if (wave === 'piano') engine.setInstanceToPianoSampler(instId);
@@ -149,11 +150,7 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
       engine.setInstanceVolume(instId, volume);
     }
     return () => {
-      // Do NOT delete instance on window close; persist it for playlist playback
-      // if (win.kind === "pianoRoll") {
-      //   deleteInstance(instId);
-      //   engine.removePianoInstance(instId);
-      // }
+      // persist instances
     };
   }, [win.kind, instId, createInstance, deleteInstance]);
 

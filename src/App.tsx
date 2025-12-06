@@ -22,8 +22,9 @@ export default function App() {
   const createDrumPattern = useDrumPatterns(s => s.createPattern);
   
   useEffect(() => {
-    createPianoInstance('default');
-    createDrumPattern('drums');
+    // Create named defaults
+    createPianoInstance('Melody Clip 1');
+    createDrumPattern('Drum Clip 1');
   }, []);
 
   // Toggle handlers - use FL Studio-style singleton openers for editors

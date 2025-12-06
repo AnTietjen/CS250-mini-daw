@@ -29,26 +29,29 @@ export interface WindowState {
 interface WindowsStore {
   windows: WindowState[];
   nextZ: number;
+  // Cache last sizes per window kind
+  lastSizes: Partial<Record<WindowKind, { w: number; h: number }>>;
   bringToFront: (id: string) => void;
   move: (id: string, x: number, y: number) => void;
   resize: (id: string, w: number, h: number) => void;
   toggleMin: (id: string) => void;
   closeWindow: (id: string) => void;
 
-  // FL Studio-style singleton editor windows (one per kind, switchable pattern)
-  openPianoRoll: (instanceId?: string) => void;
-  openStepSequencer: (patternId?: string) => void;
-  setEditorInstance: (windowId: string, instanceId: string) => void;
-  setEditorPattern: (windowId: string, patternId: string) => void;
-
   // Creation helpers (legacy, still used for other window types)
-  addStepSequencerWindow: (patternId?: string) => string;
-  addPianoWindow: (instanceId?: string) => string;
-  addKeyboardWindow: () => string;
   addMixerWindow: () => string;
+  addPianoWindow: (instanceId?: string) => string;
+  addStepSequencerWindow: (patternId?: string) => string;
   addPlaylistWindow: () => string;
   addVisualizerWindow: () => string;
   addSampleBrowserWindow: () => string;
+
+  // Singleton openers
+  openPianoRoll: (instanceId?: string) => void;
+  openStepSequencer: (patternId?: string) => void;
+
+  // Editor instance / pattern setters
+  setEditorInstance: (windowId: string, instanceId: string) => void;
+  setEditorPattern: (windowId: string, patternId: string) => void;
 
   // Query / bulk helpers
   closeByKind: (kind: WindowKind) => void;
@@ -67,6 +70,7 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     { id: "win-settings", kind: "settings", title: "Master Control", x: 640, y: 120, w: 340, h: 200, z: 3, minimized: false },
   ],
   nextZ: 8,
+  lastSizes: {},
 
   bringToFront: (id) =>
     set((s) => {
@@ -89,6 +93,12 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           ? { ...win, w: Math.max(200, w), h: Math.max(120, h) }
           : win
       ),
+      // Persist the latest size per kind
+      lastSizes: (() => {
+        const win = s.windows.find((w) => w.id === id);
+        if (!win) return s.lastSizes;
+        return { ...s.lastSizes, [win.kind]: { w: Math.max(200, w), h: Math.max(120, h) } };
+      })(),
     })),
 
   toggleMin: (id) =>
@@ -119,20 +129,24 @@ export const useWindows = create<WindowsStore>((set, get) => ({
       }));
     } else {
       // Create new
-      const id = makeId("win-piano");
+      const size = state.lastSizes['pianoRoll'] ?? { w: 1000, h: 600 };
+      const id = `${'win-piano'}-${Math.random().toString(36).slice(2, 7)}`;
       set(s => ({
-        windows: [...s.windows, {
-          id,
-          kind: "pianoRoll" as WindowKind,
-          title: "Piano Roll",
-          x: BASE_OFFSET_X + 80,
-          y: BASE_OFFSET_Y + 100,
-          w: 620,
-          h: 400,
-          z: s.nextZ,
-          minimized: false,
-          instanceId,
-        }],
+        windows: [
+          ...s.windows,
+          {
+            id,
+            kind: "pianoRoll",
+            title: "Piano Roll",
+            x: 80,
+            y: 100,
+            w: size.w,
+            h: size.h,
+            z: s.nextZ,
+            minimized: false,
+            instanceId,
+          },
+        ],
         nextZ: s.nextZ + 1,
       }));
     }
@@ -154,20 +168,24 @@ export const useWindows = create<WindowsStore>((set, get) => ({
       }));
     } else {
       // Create new
-      const id = makeId("win-step");
+      const size = state.lastSizes['stepSequencer'] ?? { w: 700, h: 240 };
+      const id = `${'win-step'}-${Math.random().toString(36).slice(2, 7)}`;
       set(s => ({
-        windows: [...s.windows, {
-          id,
-          kind: "stepSequencer" as WindowKind,
-          title: "Step Sequencer",
-          x: BASE_OFFSET_X + 40,
-          y: BASE_OFFSET_Y + 40,
-          w: 620,
-          h: 280,
-          z: s.nextZ,
-          minimized: false,
-          patternId,
-        }],
+        windows: [
+          ...s.windows,
+          {
+            id,
+            kind: "stepSequencer",
+            title: "Step Sequencer",
+            x: 40,
+            y: 40,
+            w: size.w,
+            h: size.h,
+            z: s.nextZ,
+            minimized: false,
+            patternId,
+          },
+        ],
         nextZ: s.nextZ + 1,
       }));
     }
@@ -183,8 +201,34 @@ export const useWindows = create<WindowsStore>((set, get) => ({
       windows: s.windows.map(w => w.id === windowId ? { ...w, patternId } : w),
     })),
 
+  addMixerWindow: () => {
+    const state = get();
+    const size = state.lastSizes['mixer'] ?? { w: 1200, h: 600 };
+    const id = `${'win-mix'}-${Math.random().toString(36).slice(2, 7)}`;
+    set((s) => ({
+      windows: [
+        ...s.windows,
+        {
+          id,
+          kind: "mixer",
+          title: "Mixer",
+          x: 140,
+          y: 100,
+          w: size.w,
+          h: size.h,
+          z: s.nextZ,
+          minimized: false,
+        },
+      ],
+      nextZ: s.nextZ + 1,
+    }));
+    return id;
+  },
+
   addPianoWindow: (instanceId?: string) => {
-    const id = makeId("win-piano");
+    const state = get();
+    const size = state.lastSizes['pianoRoll'] ?? { w: 560, h: 360 };
+    const id = `${'win-piano'}-${Math.random().toString(36).slice(2, 7)}`;
     set((s) => ({
       windows: [
         ...s.windows,
@@ -192,10 +236,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "pianoRoll",
           title: "Piano Roll",
-          x: BASE_OFFSET_X + 80,
-          y: BASE_OFFSET_Y + 100,
-          w: 560,
-          h: 360,
+          x: 80,
+          y: 100,
+          w: size.w,
+          h: size.h,
           z: s.nextZ,
           minimized: false,
           instanceId,
@@ -206,52 +250,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     return id;
   },
 
-  addKeyboardWindow: () => {
-    const id = makeId("win-keys");
-    set((s) => ({
-      windows: [
-        ...s.windows,
-        {
-          id,
-          kind: "keyboard",
-          title: "Typing Keyboard",
-          x: BASE_OFFSET_X + 100,
-          y: BASE_OFFSET_Y + 140,
-          w: 360,
-          h: 260,
-          z: s.nextZ,
-          minimized: false,
-        },
-      ],
-      nextZ: s.nextZ + 1,
-    }));
-    return id;
-  },
-
-  addMixerWindow: () => {
-    const id = makeId("win-mix");
-    set((s) => ({
-      windows: [
-        ...s.windows,
-        {
-          id,
-          kind: "mixer",
-          title: "Mixer",
-          x: BASE_OFFSET_X + 140,
-          y: BASE_OFFSET_Y + 180,
-          w: 520,
-          h: 340,
-          z: s.nextZ,
-          minimized: false,
-        },
-      ],
-      nextZ: s.nextZ + 1,
-    }));
-    return id;
-  },
-
   addStepSequencerWindow: (patternId?: string) => {
-    const id = makeId("win-step");
+    const state = get();
+    const size = state.lastSizes['stepSequencer'] ?? { w: 560, h: 240 };
+    const id = `${'win-step'}-${Math.random().toString(36).slice(2, 7)}`;
     set((s) => ({
       windows: [
         ...s.windows,
@@ -259,10 +261,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "stepSequencer",
           title: "Step Sequencer",
-          x: BASE_OFFSET_X + 40,
-          y: BASE_OFFSET_Y + 40,
-          w: 560,
-          h: 240,
+          x: 40,
+          y: 40,
+          w: size.w,
+          h: size.h,
           z: s.nextZ,
           minimized: false,
           patternId,
@@ -274,7 +276,9 @@ export const useWindows = create<WindowsStore>((set, get) => ({
   },
 
   addPlaylistWindow: () => {
-    const id = makeId("win-playlist");
+    const state = get();
+    const size = state.lastSizes['playlist'] ?? { w: 720, h: 300 };
+    const id = `${'win-playlist'}-${Math.random().toString(36).slice(2, 7)}`;
     set((s) => ({
       windows: [
         ...s.windows,
@@ -282,10 +286,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "playlist",
           title: "Playlist",
-          x: BASE_OFFSET_X + 60,
-          y: BASE_OFFSET_Y + 60,
-          w: 720,
-          h: 300,
+          x: 60,
+          y: 60,
+          w: size.w,
+          h: size.h,
           z: s.nextZ,
           minimized: false,
         },
@@ -296,7 +300,9 @@ export const useWindows = create<WindowsStore>((set, get) => ({
   },
 
   addVisualizerWindow: () => {
-    const id = makeId("win-vis");
+    const state = get();
+    const size = state.lastSizes['visualizer'] ?? { w: 520, h: 240 };
+    const id = `${'win-vis'}-${Math.random().toString(36).slice(2, 7)}`;
     set((s) => ({
       windows: [
         ...s.windows,
@@ -304,10 +310,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "visualizer",
           title: "Visualizer",
-          x: BASE_OFFSET_X + 160,
-          y: BASE_OFFSET_Y + 220,
-          w: 520,
-          h: 240,
+          x: 160,
+          y: 220,
+          w: size.w,
+          h: size.h,
           z: s.nextZ,
           minimized: false,
         },
@@ -318,7 +324,9 @@ export const useWindows = create<WindowsStore>((set, get) => ({
   },
 
   addSampleBrowserWindow: () => {
-    const id = makeId("win-sample");
+    const state = get();
+    const size = state.lastSizes['sampleBrowser'] ?? { w: 400, h: 320 };
+    const id = `${'win-sample'}-${Math.random().toString(36).slice(2, 7)}`;
     set((s) => ({
       windows: [
         ...s.windows,
@@ -326,10 +334,10 @@ export const useWindows = create<WindowsStore>((set, get) => ({
           id,
           kind: "sampleBrowser",
           title: "Sample Browser",
-          x: BASE_OFFSET_X + 180,
-          y: BASE_OFFSET_Y + 180,
-          w: 400,
-          h: 320,
+          x: 180,
+          y: 180,
+          w: size.w,
+          h: size.h,
           z: s.nextZ,
           minimized: false,
         },
@@ -339,10 +347,6 @@ export const useWindows = create<WindowsStore>((set, get) => ({
     return id;
   },
 
-  closeByKind: (kind) =>
-    set((s) => ({
-      windows: s.windows.filter((w) => w.kind !== kind),
-    })),
-
-  hasKind: (kind) => get().windows.some((w) => w.kind === kind),
+  hasKind: (kind) => get().windows.some(w => w.kind === kind),
+  closeByKind: (kind) => set((s) => ({ windows: s.windows.filter(w => w.kind !== kind) })),
 }));

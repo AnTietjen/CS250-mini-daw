@@ -66,8 +66,39 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
   const createInstance = usePianoInstances(s => s.createInstance);
   const setEditorInstance = useWindows(s => s.setEditorInstance);
   const instanceList = useMemo(() => Object.keys(instances), [instances]);
-  
-  const id = instanceId || instanceList[0] || 'default';
+
+  // Helper: next "Melody Clip N" name
+  const nextMelodyName = useMemo(() => {
+    const base = "Melody Clip ";
+    const nums = instanceList
+      .map(id => {
+        const m = id.startsWith(base) ? Number(id.slice(base.length)) : NaN;
+        return Number.isFinite(m) ? m : null;
+      })
+      .filter((n): n is number => n !== null);
+    const max = nums.length ? Math.max(...nums) : 1; // if only "Melody Clip 1" exists, next is 2
+    return `${base}${max + 1}`;
+  }, [instanceList]);
+
+  // Ensure the default instance exists synchronously (only Melody Clip 1)
+  useEffect(() => {
+    if (instanceList.length === 0) {
+      createInstance('Melody Clip 1');
+      if (windowId) setEditorInstance(windowId, 'Melody Clip 1');
+    }
+  }, [instanceList.length, createInstance, setEditorInstance, windowId]);
+
+  // Resolve current id: prefer provided if it exists, else Melody Clip 1
+  const resolvedId = instances[instanceId ?? ''] ? (instanceId as string) : 'Melody Clip 1';
+  const id = resolvedId;
+
+  // Remove auto-create for arbitrary IDs; only ensure synth if the instance exists
+  useEffect(() => {
+    if (instances[id]) {
+      engine.ensureInstanceSynth(id);
+    }
+  }, [id, instances]);
+
   const notes = usePianoInstances(s => s.instances[id]?.notes ?? EMPTY_NOTES);
   const primary = useTheme(s => s.primary);
   const addNote = usePianoInstances(s => s.addNote);
@@ -83,25 +114,28 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
   const substep = usePlayhead(s => s.substep);
   // noise retained in engine but not exposed in UI per request
 
-  useEffect(() => {
-    // Ensure per-instance synth exists
-    engine.ensureInstanceSynth(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Keep engine in sync with per-instance instrument params
   useEffect(() => {
+    if (!instances[id]) return;
     if (wave === 'piano') engine.setInstanceToPianoSampler(id);
     else engine.setInstanceToBasicSynth(id, wave as any);
-  }, [id, wave]);
-  useEffect(() => { engine.setInstanceVolume(id, volume); }, [id, volume]);
+  }, [id, wave, instances]);
+  useEffect(() => {
+    if (!instances[id]) return;
+    engine.setInstanceVolume(id, volume);
+  }, [id, volume, instances]);
 
   // Sync engine whenever note set changes (send explicit pitch string to avoid index mismatches)
   useEffect(() => {
-    // For now, we layer notes from all instances in the engine globally.
-    // This component only pushes its own instance's notes; engine should merge.
-    engine.setSynthNotesForInstance(id, notes.map(n => ({ id: n.id, pitchIndex: n.pitchIndex, pitch: ROW_PITCHES[n.pitchIndex], start: n.start, length: n.length })));
-  }, [notes, id]);
+    if (!instances[id]) return;
+    engine.setSynthNotesForInstance(id, notes.map(n => ({
+      id: n.id,
+      pitchIndex: n.pitchIndex,
+      pitch: ROW_PITCHES[n.pitchIndex],
+      start: n.start,
+      length: n.length
+    })));
+  }, [notes, id, instances]);
 
   const [containerRef] = useElementSize<HTMLDivElement>();
   const vZoom = usePianoView((s: { vZoom: number }) => s.vZoom);
@@ -228,8 +262,19 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
     );
   }
 
+  // If no valid instance yet, show minimal placeholder
+  if (!instances[id]) {
+    return (
+      <section style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', border: '1px solid #1e293b' }}>
+        <div style={{ color: '#e2e8f0', fontSize: 12, opacity: 0.8 }}>
+          Creating first piano pattern...
+        </div>
+      </section>
+    );
+  }
+
   return (
-  <section ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+    <section ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 4px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {/* FL Studio-style pattern selector */}
@@ -240,7 +285,7 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
               onChange={e => {
                 const val = e.target.value;
                 if (val === '___NEW___') {
-                  const newId = `pat-${Math.floor(Math.random()*10000)}`;
+                  const newId = nextMelodyName;
                   createInstance(newId);
                   if (windowId) setEditorInstance(windowId, newId);
                 } else {

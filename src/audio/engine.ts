@@ -40,15 +40,15 @@ class Engine {
 
   // Patterns
   private drumPatterns: Record<string, boolean[][]> = {
-    'drums': [
+    'Drum Clip 1': [
       Array(48).fill(false), // kick
       Array(48).fill(false), // snare
       Array(48).fill(false), // hat
     ]
   };
   // Legacy single pattern accessor
-  private get drumPattern() { return this.drumPatterns['drums']; }
-  private set drumPattern(p: boolean[][]) { this.drumPatterns['drums'] = p; }
+  private get drumPattern() { return this.drumPatterns['Drum Clip 1']; }
+  private set drumPattern(p: boolean[][]) { this.drumPatterns['Drum Clip 1'] = p; }
 
   // --- Piano roll (unchanged) ---
   private lead: Tone.PolySynth | null = null;
@@ -123,17 +123,14 @@ class Engine {
     // Initialize mixer channels
     this.initMixerChannels();
 
-    // Metronome
+    // Metronome (no separate Tone.Loop; trigger inside driver to avoid drift)
     this.metSynth = new Tone.Synth({
       oscillator: { type: "square" },
       envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.01 },
       volume: -10,
     }).connect(this.limiter);
-    this.metLoop = new Tone.Loop((time) => {
-      if (this.metronomeEnabled) {
-        this.metSynth!.triggerAttackRelease("C6", "16n", time);
-      }
-    }, "4n").start(0);
+    // Remove standalone loop to prevent desync
+    this.metLoop = null;
 
     // Built-in drums
     this.kick = new Tone.MembraneSynth({
@@ -192,6 +189,29 @@ class Engine {
   }
   stop() {
     Tone.Transport.stop();
+  }
+  pause() {
+    try {
+      Tone.Transport.pause();
+    } catch {}
+  }
+  resetToStart() {
+    try {
+      // Stop and set position to start
+      Tone.Transport.stop();
+      Tone.Transport.position = "0:0:0";
+      // Reset internal driver counters
+      this.globalSubstep = 0;
+
+      // Important: clear and reschedule any Transport callbacks to avoid stale scheduling
+      this.setupDriver();
+
+      // Reflect in UI playhead
+      const ph = usePlayhead.getState();
+      ph.setAbsoluteSubstep(0);
+      ph.setSubstep(0);
+      ph.setBar(0);
+    } catch {}
   }
   constructor() {
     Tone.Transport.on("start", () => {
@@ -269,7 +289,7 @@ class Engine {
     } else if (Array.isArray(idOrPattern)) {
       // Legacy single pattern
       const safe = [0, 1, 2].map((r) => (idOrPattern[r] ? idOrPattern[r].slice(0, 48) : Array(48).fill(false)));
-      this.drumPatterns['drums'] = safe as [boolean[], boolean[], boolean[]];
+      this.drumPatterns['Drum Clip 1'] = safe as [boolean[], boolean[], boolean[]];
     }
   }
 
@@ -510,25 +530,38 @@ class Engine {
     if (this.stepSeq) { try { this.stepSeq.dispose(); } catch {} this.stepSeq = null; }
     if (this.arrangementRepeat != null) { Tone.Transport.clear(this.arrangementRepeat); this.arrangementRepeat = null; }
     this.globalSubstep = 0;
-    // If playlist arrangement is present, use the arrangement driver; otherwise fall back to legacy stepSeq
-    // If we have arrangement notes or drum bars, use arrangement mode
+
     const hasArrangement = this.arrangementNotes.length > 0 || Object.keys(this.arrangementDrumBars).length > 0;
-    
+    const triggerMetronome = (time: number, localSubstep: number) => {
+      if (!this.metronomeEnabled || !this.metSynth) return;
+      // 48 substeps per bar → 12 per beat. Accented on beat 1.
+      const isBeat = (localSubstep % 12) === 0;
+      if (!isBeat) return;
+      const isDownbeat = localSubstep === 0;
+      try {
+        this.metSynth.triggerAttackRelease(isDownbeat ? "C6" : "A5", "16n", time);
+      } catch {}
+    };
+
     if (hasArrangement) {
       this.arrangementRepeat = Tone.Transport.scheduleRepeat((time) => {
         const step = this.globalSubstep;
         const bar = Math.floor(step / 48);
         const local = step % 48;
+
         try {
           const ph = usePlayhead.getState();
           ph.setAbsoluteSubstep(step);
           ph.setSubstep(local);
           ph.setBar(bar);
         } catch {}
-        // Drums: trigger if a drum clip is active on this bar
+
+        // Metronome locked to driver
+        triggerMetronome(time as any, local);
+
+        // Drums
         const activeDrumIds = this.arrangementDrumBars[bar];
         if (activeDrumIds && activeDrumIds.length) {
-          // Mix all active drum patterns for this step
           let k=false, s=false, h=false;
           for (const id of activeDrumIds) {
             const pat = this.drumPatterns[id];
@@ -542,7 +575,8 @@ class Engine {
           if (s) this.snare?.triggerAttackRelease("16n", time);
           if (h) this.hat?.triggerAttackRelease("32n", time);
         }
-        // Piano notes scheduled
+
+        // Piano notes
         const starts = this.arrangementNotesByStart[step];
         if (starts && starts.length) {
           const bpm = Tone.Transport.bpm.value;
@@ -561,6 +595,7 @@ class Engine {
             }
           }
         }
+
         this.globalSubstep++;
         if (this.globalSubstep >= this.arrangementLengthSubsteps) {
           this.globalSubstep = 0; // loop arrangement
@@ -570,7 +605,12 @@ class Engine {
       // legacy 48-step sequence for single-bar playback
       this.stepSeq = new Tone.Sequence(
         (time, stepIx) => {
-          try { usePlayhead.getState().setSubstep(stepIx % 48); } catch {}
+          const local = stepIx % 48;
+          try { usePlayhead.getState().setSubstep(local); } catch {}
+
+          // Metronome locked to sequence
+          triggerMetronome(time as any, local);
+
           if (this.drumPattern[0][stepIx]) this.kick!.triggerAttackRelease("C2", "8n", time);
           if (this.drumPattern[1][stepIx]) this.snare!.triggerAttackRelease("16n", time);
           if (this.drumPattern[2][stepIx]) this.hat!.triggerAttackRelease("32n", time);

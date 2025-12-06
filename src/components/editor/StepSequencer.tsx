@@ -57,7 +57,7 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
   const setEditorPattern = useWindows(s => s.setEditorPattern);
   const patternList = useMemo(() => Object.keys(allPatterns), [allPatterns]);
   
-  const id = patternId || patternList[0] || 'drums';
+  const id = patternId || patternList[0] || 'Drum Clip 1';
   const patterns = useDrumPatterns(s => s.patterns);
   const toggleCell = useDrumPatterns(s => s.toggleCell);
   
