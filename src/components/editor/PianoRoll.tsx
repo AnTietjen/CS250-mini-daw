@@ -109,6 +109,7 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
   const setWave = usePianoInstances(s => s.setWave);
   const volume = usePianoInstances(s => s.instances[id]?.volume ?? 0.8);
   const setVolume = usePianoInstances(s => s.setVolume);
+  const lastInsertLen = usePianoInstances(s => s.instances[id]?.lastInsertLen ?? 3); // default 16th = 3 substeps
   const snap = useSnap(s => s.snap);
   const substepsPerCell = SNAP_TO_SUBSTEPS[snap];
   const substep = usePlayhead(s => s.substep);
@@ -180,11 +181,11 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
 
   const onBackgroundClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    // Avoid adding if double click triggered delete just now
     const startSub = startPosToSubstep(e.clientX);
     const pitchIndex = clientYToPitch(e.clientY);
-    // Create one cell long by default, snapped.
-    addNote(id, { pitchIndex, start: startSub, length: substepsPerCell });
+    // Default to last insert length (16th=3) instead of current snap cell size
+    const len = Math.max(1, lastInsertLen);
+    addNote(id, { pitchIndex, start: startSub, length: len });
   };
 
   const onNoteMouseDown = (e: React.MouseEvent, id: string, edge?: 'right') => {
@@ -210,6 +211,7 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
         const baseLen = n.length;
         // snap resize in increments of substepsPerCell
         const snapped = Math.round((baseLen + deltaSub) / substepsPerCell) * substepsPerCell;
+        // Update note and remember last inserted length for future notes
         resizeNote(id, prev.id, Math.max(substepsPerCell, snapped));
       }
       return prev;

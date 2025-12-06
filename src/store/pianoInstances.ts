@@ -14,6 +14,8 @@ export interface PianoInstance {
   notes: PianoNote[];
   wave: "sine" | "square" | "sawtooth" | "triangle" | "piano";
   volume: number; // 0..1
+  // Remember the last inserted note length (in substeps). Default: 16th = 3 substeps.
+  lastInsertLen?: number;
 }
 
 interface PianoInstancesState {
@@ -38,7 +40,7 @@ export const usePianoInstances = create<PianoInstancesState>((set, get) => ({
   instances: {},
   createInstance: (id) => set(s => {
     if (s.instances[id]) return s;
-    const inst: PianoInstance = { id, notes: [], wave: "sawtooth", volume: 0.8 };
+    const inst: PianoInstance = { id, notes: [], wave: "sawtooth", volume: 0.8, lastInsertLen: 3 };
     return { instances: { ...s.instances, [id]: inst } };
   }),
   deleteInstance: (id) => set(s => {
@@ -50,11 +52,16 @@ export const usePianoInstances = create<PianoInstancesState>((set, get) => ({
   addNote: (inst, n) => set(s => {
     const i = s.instances[inst]; if (!i) return s;
     const nn = { id: makeId(), ...n };
-    return { instances: { ...s.instances, [inst]: { ...i, notes: [...i.notes, nn] } } };
+    // Update last insert length to the new note's length
+    const next = { ...i, notes: [...i.notes, nn], lastInsertLen: Math.max(1, nn.length) };
+    return { instances: { ...s.instances, [inst]: next } };
   }),
   updateNote: (inst, id, patch) => set(s => {
     const i = s.instances[inst]; if (!i) return s;
-    return { instances: { ...s.instances, [inst]: { ...i, notes: i.notes.map(n => n.id === id ? { ...n, ...patch } : n) } } };
+    const nextNotes = i.notes.map(n => n.id === id ? { ...n, ...patch } : n);
+    // If patch contains length, reflect it in lastInsertLen
+    const nextLen = (patch.length != null) ? Math.max(1, patch.length) : i.lastInsertLen;
+    return { instances: { ...s.instances, [inst]: { ...i, notes: nextNotes, lastInsertLen: nextLen ?? i.lastInsertLen } } };
   }),
   deleteNote: (inst, id) => set(s => {
     const i = s.instances[inst]; if (!i) return s;
@@ -67,7 +74,8 @@ export const usePianoInstances = create<PianoInstancesState>((set, get) => ({
   }),
   resizeNote: (inst, id, newLength) => set(s => {
     const i = s.instances[inst]; if (!i) return s;
-    return { instances: { ...s.instances, [inst]: { ...i, notes: i.notes.map(n => n.id === id ? { ...n, length: Math.max(1, newLength) } : n) } } };
+    const len = Math.max(1, newLength);
+    return { instances: { ...s.instances, [inst]: { ...i, notes: i.notes.map(n => n.id === id ? { ...n, length: len } : n), lastInsertLen: len } } };
   }),
   replaceAll: (inst, notes) => set(s => {
     const i = s.instances[inst]; if (!i) return s;
