@@ -56,12 +56,24 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
   const createPattern = useDrumPatterns(s => s.createPattern);
   const setEditorPattern = useWindows(s => s.setEditorPattern);
   const patternList = useMemo(() => Object.keys(allPatterns), [allPatterns]);
-  
+
+  // Compute next Drum Clip name (Drum Clip 1, 2, …)
+  const nextDrumName = useMemo(() => {
+    const base = "Drum Clip ";
+    const nums = patternList
+      .map(id => {
+        const m = id.startsWith(base) ? Number(id.slice(base.length)) : NaN;
+        return Number.isFinite(m) ? m : null;
+      })
+      .filter((n): n is number => n !== null);
+    const max = nums.length ? Math.max(...nums) : 1;
+    return `${base}${max + 1}`;
+  }, [patternList]);
+
   const id = patternId || patternList[0] || 'Drum Clip 1';
   const patterns = useDrumPatterns(s => s.patterns);
   const toggleCell = useDrumPatterns(s => s.toggleCell);
-  
-  // Ensure pattern exists
+
   // Ensure pattern exists
   useEffect(() => {
     createPattern(id);
@@ -120,14 +132,14 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
             onChange={e => {
               const val = e.target.value;
               if (val === '___NEW___') {
-                const newId = `drums-${Math.floor(Math.random()*10000)}`;
+                const newId = nextDrumName; // use sequential Drum Clip naming
                 createPattern(newId);
                 if (windowId) setEditorPattern(windowId, newId);
               } else {
                 if (windowId) setEditorPattern(windowId, val);
               }
             }}
-            style={{ padding: '4px 8px', borderRadius: 6, minWidth: 100, background: '#1e293b', border: `1px solid ${primary}44`, color: '#e2e8f0' }}
+            style={{ padding: '4px 8px', borderRadius: 6, minWidth: 100, background: '#1e293b', border: `1px solid ${useTheme.getState().primary}44`, color: '#e2e8f0' }}
           >
             {patternList.map(pid => <option key={pid} value={pid}>{pid}</option>)}
             <option value="___NEW___">+ New Pattern...</option>
