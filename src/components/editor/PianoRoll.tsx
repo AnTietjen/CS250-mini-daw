@@ -298,6 +298,10 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
     return () => el.removeEventListener('scroll', onScroll);
   }, [id]);
 
+  // Palette for column bands (groups of 4 cells)
+  const COL_A = '#0b1830'; // darker
+  const COL_B = '#0d1c38'; // slightly lighter
+
   return (
     <section ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 4px', flexWrap: 'wrap' }}>
@@ -386,6 +390,45 @@ export default function PianoRoll({ instanceId, windowId }: { instanceId?: strin
             boxSizing: 'border-box'
           }}
         >
+          {/* Base-4 column bands */}
+          {Array.from({ length: timelineCells }, (_, c) => {
+            const bandColor = Math.floor(c / 4) % 2 === 0 ? COL_A : COL_B;
+            return (
+              <div
+                key={`colband-${c}`}
+                style={{
+                  position: 'absolute',
+                  left: c * cellW,
+                  top: 0,
+                  width: cellW,
+                  height: '100%',
+                  background: bandColor,
+                  opacity: 0.5,
+                  pointerEvents: 'none',
+                }}
+              />
+            );
+          })}
+
+          {/* Darker rows for black keys */}
+          {ROW_PITCHES.map((p, i) => (
+            isBlackKey(p) ? (
+              <div
+                key={`rowbg-${p}`}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: i * rowH,
+                  right: 0,
+                  height: rowH,
+                  background: '#071326', // darker stripe
+                  opacity: 0.7,
+                  pointerEvents: 'none',
+                }}
+              />
+            ) : null
+          ))}
+
           {gridLines}
           {/* Playhead line */}
           <div style={{
