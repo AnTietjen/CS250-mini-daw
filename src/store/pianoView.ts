@@ -19,7 +19,7 @@ interface PianoViewState {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-export const usePianoView = create<PianoViewState>((set) => ({
+export const usePianoView = create<PianoViewState>((set, get) => ({
   vZoom: 1.4,
   hZoom: 1.2,
   setVZoom: (z) => set({ vZoom: clamp(z, 0.5, 3) }),
@@ -35,7 +35,7 @@ export const usePianoView = create<PianoViewState>((set) => ({
     scroll: { ...s.scroll, [id]: { left: Math.max(0, left), top: Math.max(0, top) } }
   })),
   getScroll: (id) => {
-    const s = usePianoView.getState();
+    const s = get();
     return s.scroll[id];
   },
 }));

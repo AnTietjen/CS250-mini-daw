@@ -65,8 +65,6 @@ interface WindowsStore {
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 7)}`;
 
 // Dynamic workspace offsets (fixed regions: left sidebar + top bar)
-const BASE_OFFSET_X = 0; // windows area already positioned in App
-const BASE_OFFSET_Y = 0;
 
 export const useWindows = create<WindowsStore>((set, get) => ({
   // All floating windows start empty; fixed UI pieces are rendered directly in App.

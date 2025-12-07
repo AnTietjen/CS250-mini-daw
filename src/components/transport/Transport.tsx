@@ -5,6 +5,7 @@ import { useSnap } from "../../store/snap";
 import { usePlayhead } from "../../store/playhead";
 import { useProject } from "../../store/project";
 import { useTheme, PRESET_COLORS } from "../../store/theme";
+import { saveProject, loadProject } from "../../utils/io/projectIO";
 
 export default function Transport() {
   const [audioReady, setAudioReady] = useState(false);
@@ -16,6 +17,7 @@ export default function Transport() {
   const [tapBpm, setTapBpm] = useState<number | null>(null);
   const tapTimes = useRef<number[]>([]);
   const tapTimeout = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Merged Hooks
   const snap = useSnap((s) => s.snap);
@@ -204,6 +206,30 @@ export default function Transport() {
             />
           ))}
         </div>
+      </div>
+
+      <div style={{ width: 1, height: 24, background: '#334155', margin: '0 4px' }} />
+      
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={saveProject} style={btnStyle} title="Save Project">
+          💾 Save
+        </button>
+        <button onClick={() => fileInputRef.current?.click()} style={btnStyle} title="Load Project">
+          📂 Load
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              loadProject(file);
+              e.target.value = ''; // reset
+            }
+          }}
+        />
       </div>
 
     </section>
