@@ -135,7 +135,8 @@ export const WindowFrame: React.FC<Props> = React.memo(({ id }) => {
   // Create/delete piano instance tied to this window if it's a pianoRoll
   const createInstance = usePianoInstances(s => s.createInstance);
   const deleteInstance = usePianoInstances(s => s.deleteInstance);
-  const instId = (win as any).instanceId ?? win.id;
+  // Fix: Default to 'Melody Clip 1' for piano rolls if no instance is set, matching the useEffect creation logic
+  const instId = (win as any).instanceId ?? (win.kind === 'pianoRoll' ? 'Melody Clip 1' : win.id);
   const getInst = usePianoInstances(s => s.instances[instId]);
   useEffect(() => {
     if (win.kind === "pianoRoll") {

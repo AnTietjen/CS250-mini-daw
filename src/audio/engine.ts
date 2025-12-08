@@ -37,6 +37,12 @@ class Engine {
   private arrangementNotesByStart: Record<number, { id: string; pitch: string; pitchIndex: number; start: number; length: number; instanceId: string }[]> = {};
   private arrangementDrumBars: Record<number, string[]> = {};
 
+  // Store lane configuration to map rows to sounds
+  private drumLanesConfig: EngineLane[] = [
+    { id: 'kick', name: 'Kick', source: { type: 'builtIn', kind: 'kick' }, pattern: [] },
+    { id: 'snare', name: 'Snare', source: { type: 'builtIn', kind: 'snare' }, pattern: [] },
+    { id: 'hat', name: 'Hat', source: { type: 'builtIn', kind: 'hat' }, pattern: [] },
+  ];
 
   // Patterns
   private drumPatterns: Record<string, boolean[][]> = {
@@ -101,7 +107,7 @@ class Engine {
   private mixerInitialized = false;
   
   // Individual drum routing (kick, snare, hat can each go to different channels)
-  private drumRouting: { kick: number; snare: number; hat: number } = { kick: 0, snare: 0, hat: 0 };
+  private drumRouting: Record<string, number> = { kick: 0, snare: 0, hat: 0 };
   // Gain nodes for each drum to route through mixer
   private kickGain: Tone.Gain | null = null;
   private snareGain: Tone.Gain | null = null;
@@ -260,6 +266,9 @@ class Engine {
             autostart: false,
             fadeOut: 0.02,
           }).connect(gain);
+          
+          // Connect to mixer channel if routed, else master (via limiter for now, but updateDrumRouting will fix it)
+          // Actually, let's just connect to limiter initially, and call updateDrumRouting at the end
           gain.connect(this.limiter!);
           this.samplePlayers.set(lane.id, { player, gain, url: lane.source.url });
         }
@@ -275,21 +284,19 @@ class Engine {
         this.samplePlayers.delete(id);
       }
     }
-    // Store lanes (clone patterns, clamp to 48)
-    // this.drumLanes = lanes.map((l) => ({
-    //   ...l,
-    //   pattern: (l.pattern || []).slice(0, 48),
-    // }));
+    // Store lanes
+    this.drumLanesConfig = lanes;
+    // Ensure routing is applied to new players
+    this.updateDrumRouting();
   }
 
   setDrumPattern(idOrPattern: string | boolean[][], pattern?: boolean[][]) {
     if (typeof idOrPattern === 'string' && pattern) {
-      const safe = [0, 1, 2].map((r) => (pattern[r] ? pattern[r].slice(0, 48) : Array(48).fill(false)));
-      this.drumPatterns[idOrPattern] = safe as [boolean[], boolean[], boolean[]];
+      // Store pattern as is, but ensure rows are valid arrays
+      this.drumPatterns[idOrPattern] = pattern.map(row => row ? row.slice(0, 48) : Array(48).fill(false));
     } else if (Array.isArray(idOrPattern)) {
       // Legacy single pattern
-      const safe = [0, 1, 2].map((r) => (idOrPattern[r] ? idOrPattern[r].slice(0, 48) : Array(48).fill(false)));
-      this.drumPatterns['Drum Clip 1'] = safe as [boolean[], boolean[], boolean[]];
+      this.drumPatterns['Drum Clip 1'] = idOrPattern.map(row => row ? row.slice(0, 48) : Array(48).fill(false));
     }
   }
 
@@ -562,18 +569,29 @@ class Engine {
         // Drums
         const activeDrumIds = this.arrangementDrumBars[bar];
         if (activeDrumIds && activeDrumIds.length) {
-          let k=false, s=false, h=false;
           for (const id of activeDrumIds) {
             const pat = this.drumPatterns[id];
             if (pat) {
-              if (pat[0][local]) k = true;
-              if (pat[1][local]) s = true;
-              if (pat[2][local]) h = true;
+              // Iterate over lanes in config
+              this.drumLanesConfig.forEach((lane, i) => {
+                if (pat[i] && pat[i][local]) {
+                  // Trigger sound for this lane
+                  if (lane.source.type === 'builtIn') {
+                    if (lane.source.kind === 'kick') this.kick?.triggerAttackRelease("C2", "8n", time);
+                    else if (lane.source.kind === 'snare') this.snare?.triggerAttackRelease("16n", time);
+                    else if (lane.source.kind === 'hat') this.hat?.triggerAttackRelease("32n", time);
+                  } else if (lane.source.type === 'sample') {
+                    const playerEntry = this.samplePlayers.get(lane.id);
+                    if (playerEntry) {
+                      try {
+                        playerEntry.player.start(time);
+                      } catch {}
+                    }
+                  }
+                }
+              });
             }
           }
-          if (k) this.kick?.triggerAttackRelease("C2", "8n", time);
-          if (s) this.snare?.triggerAttackRelease("16n", time);
-          if (h) this.hat?.triggerAttackRelease("32n", time);
         }
 
         // Piano notes
@@ -751,14 +769,24 @@ class Engine {
       this.hatGain.disconnect();
       this.hatGain.connect(hatChannel.input);
     }
+
+    // Update sample players routing
+    this.samplePlayers.forEach((entry, id) => {
+      const channelId = this.drumRouting[id] || 0;
+      const channel = this.mixerChannels[channelId] || this.mixerChannels[0];
+      if (entry.gain) {
+        entry.gain.disconnect();
+        entry.gain.connect(channel.input);
+      }
+    });
   }
   
-  setDrumRouting(drum: 'kick' | 'snare' | 'hat', channelId: number) {
+  setDrumRouting(drum: string, channelId: number) {
     this.drumRouting[drum] = channelId;
     this.updateDrumRouting();
   }
   
-  getDrumRouting(drum: 'kick' | 'snare' | 'hat'): number {
+  getDrumRouting(drum: string): number {
     return this.drumRouting[drum];
   }
   

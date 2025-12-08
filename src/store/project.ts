@@ -1,5 +1,6 @@
 // src/store/project.ts
 import { create } from "zustand";
+import { engine } from "../audio/engine";
 
 export const SUBSTEPS_PER_BAR = 48; // 12 per beat * 4 beats
 export const MAX_DRUM_LANES = 10;   // hard limit for drum lanes
@@ -62,7 +63,9 @@ export const useProject = create<ProjectState>((set, get) => ({
       source: { type: "sample", url: sample.url },
       pattern: Array(SUBSTEPS_PER_BAR).fill(false),
     };
-    set({ drumLanes: [...lanes, lane] });
+    const newLanes = [...lanes, lane];
+    set({ drumLanes: newLanes });
+    engine.setDrumLanes(newLanes);
     return true;
   },
 
@@ -71,6 +74,7 @@ export const useProject = create<ProjectState>((set, get) => ({
       if (index < 0 || index >= s.drumLanes.length) return s;
       const next = s.drumLanes.slice();
       next.splice(index, 1);
+      engine.setDrumLanes(next);
       return { drumLanes: next };
     }),
 

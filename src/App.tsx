@@ -6,7 +6,9 @@ import PlaylistBridge from './components/playlist/PlaylistBridge';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { usePianoInstances } from "./store/pianoInstances";
 import { useDrumPatterns } from "./store/drumPatterns";
+import { useProject } from "./store/project";
 import { useTheme } from "./store/theme";
+import { engine } from "./audio/engine";
 
 import SampleBrowser from "./components/rack/SampleBrowser";
 import Transport from "./components/transport/Transport";
@@ -20,11 +22,14 @@ export default function App() {
   // Initialize default patterns on first load
   const createPianoInstance = usePianoInstances(s => s.createInstance);
   const createDrumPattern = useDrumPatterns(s => s.createPattern);
+  const drumLanes = useProject(s => s.drumLanes);
   
   useEffect(() => {
     // Create named defaults
     createPianoInstance('Melody Clip 1');
     createDrumPattern('Drum Clip 1');
+    // Sync initial drum lanes to engine
+    engine.setDrumLanes(drumLanes);
   }, []);
 
   // Toggle handlers - use FL Studio-style singleton openers for editors

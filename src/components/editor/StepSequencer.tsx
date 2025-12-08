@@ -2,6 +2,7 @@
 import { useEffect, useMemo } from "react";
 import { useTheme } from "../../store/theme";
 import { useDrumPatterns } from "../../store/drumPatterns";
+import { useProject } from "../../store/project";
 import { engine } from "../../audio/engine";
 import { useElementSize } from "../../hooks/useElementSize";
 import { usePlayhead } from "../../store/playhead";
@@ -10,26 +11,25 @@ import { useWindows } from "../../store/windows";
 import { useMixer } from "../../store/mixer";
 import type { DrumType } from "../../store/mixer";
 
-const ROW_LABELS: { name: string; drum: DrumType }[] = [
-  { name: "Kick", drum: "kick" },
-  { name: "Snare", drum: "snare" },
-  { name: "Hat", drum: "hat" },
-];
-
 // Individual drum routing dropdown
-function DrumRouting({ drum, label }: { drum: DrumType; label: string }) {
+function DrumRouting({ drum, label }: { drum: DrumType | string; label: string }) {
   const primary = useTheme(s => s.primary);
   const channels = useMixer(s => s.channels);
   const drumRouting = useMixer(s => s.drumRouting);
   const setDrumRouting = useMixer(s => s.setDrumRouting);
   
+  // Only show routing for built-in drums for now
+  if (typeof drum === 'string' && !['kick', 'snare', 'hat'].includes(drum)) {
+     return null; 
+  }
+
   return (
     <select
-      value={drumRouting[drum] ?? 0}
+      value={drumRouting[drum as DrumType] ?? 0}
       onChange={(e) => {
         const chId = Number(e.target.value);
-        setDrumRouting(drum, chId);
-        engine.setDrumRouting(drum, chId);
+        setDrumRouting(drum as DrumType, chId);
+        engine.setDrumRouting(drum as DrumType, chId);
       }}
       style={{ 
         padding: '2px 4px', 
@@ -56,6 +56,9 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
   const createPattern = useDrumPatterns(s => s.createPattern);
   const setEditorPattern = useWindows(s => s.setEditorPattern);
   const patternList = useMemo(() => Object.keys(allPatterns), [allPatterns]);
+  
+  // Get lanes from project
+  const drumLanes = useProject(s => s.drumLanes);
 
   // Compute next Drum Clip name (Drum Clip 1, 2, …)
   const nextDrumName = useMemo(() => {
@@ -79,16 +82,24 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
     createPattern(id);
   }, [id, createPattern]);
 
-  const pattern = patterns[id]?.rows || [
-    Array(48).fill(false),
-    Array(48).fill(false),
-    Array(48).fill(false)
-  ];
+  // Get rows from pattern, or default empty rows if not enough
+  const patternRows = patterns[id]?.rows || [];
+  
+  // Combine lanes with pattern rows
+  const rows = useMemo(() => {
+    return drumLanes.map((lane, i) => ({
+      label: lane.name,
+      drum: lane.source.type === 'builtIn' ? lane.source.kind : lane.id,
+      row: patternRows[i] || Array(48).fill(false)
+    }));
+  }, [drumLanes, patternRows]);
 
   // keep engine in sync whenever pattern changes
   useEffect(() => {
-    engine.setDrumPattern(id, pattern);
-  }, [id, pattern]);
+    // We need to pass the full grid to engine, matching drumLanes
+    const grid = drumLanes.map((_, i) => patternRows[i] || Array(48).fill(false));
+    engine.setDrumPattern(id, grid);
+  }, [id, patternRows, drumLanes]);
 
   const [containerRef, size] = useElementSize<HTMLDivElement>();
   const substep = usePlayhead((s) => s.substep);
@@ -169,16 +180,16 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
           transform: `translate3d(${(substep / substepsPerCell) * (cell + gap)}px, 0, 0)`,
           willChange: 'transform'
         }} />
-        {pattern.map((row, r) => (
+        {rows.map((row, r) => (
           <div key={r} style={{ display: "contents" }}>
             <div style={{ alignSelf: "center", display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ opacity: 0.9, fontSize: 12, minWidth: 40 }}>{ROW_LABELS[r].name}</span>
-              <DrumRouting drum={ROW_LABELS[r].drum} label={ROW_LABELS[r].name} />
+              <span style={{ opacity: 0.9, fontSize: 12, minWidth: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.label}>{row.label}</span>
+              <DrumRouting drum={row.drum} label={row.label} />
             </div>
             {Array.from({ length: columns }).map((_, c) => {
               const subIndex = c * substepsPerCell;
               const endIndex = Math.min(48, subIndex + substepsPerCell);
-              const on = row.slice(subIndex, endIndex).some(Boolean);
+              const on = row.row.slice(subIndex, endIndex).some(Boolean);
 
               const paletteIndex = Math.floor(c / 4) % 2;
               const bg = on
@@ -205,7 +216,7 @@ export default function StepSequencer({ patternId, windowId }: { patternId?: str
                   transition: "background 120ms",
                   outline: "none", // removes white focus outline
                 }}
-                title={`${ROW_LABELS[r].name} • Cell ${c + 1}`}
+                title={`${row.label} • Cell ${c + 1}`}
               />
               );
             })}

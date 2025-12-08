@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-const DRUM_ROWS = 3;   // Kick, Snare, Hat
+const DRUM_ROWS = 10;   // Max drum lanes
 const SUBSTEPS_PER_BAR = 48; // 12 per beat * 4 beats
 
 export interface DrumPattern {

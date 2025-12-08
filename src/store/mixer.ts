@@ -11,7 +11,7 @@ export interface MixerChannel {
   solo: boolean;
 }
 
-export type DrumType = 'kick' | 'snare' | 'hat';
+export type DrumType = 'kick' | 'snare' | 'hat' | string;
 
 interface MixerState {
   channels: MixerChannel[];
@@ -19,7 +19,7 @@ interface MixerState {
   // Key is pattern ID (piano instance or drum pattern), value is mixer channel ID
   routing: Record<string, number>;
   // Individual drum routing
-  drumRouting: Record<DrumType, number>;
+  drumRouting: Record<string, number>;
   
   // Actions
   setVolume: (channelId: number, volume: number) => void;
@@ -29,8 +29,8 @@ interface MixerState {
   setChannelName: (channelId: number, name: string) => void;
   setRouting: (patternId: string, channelId: number) => void;
   getRouting: (patternId: string) => number;
-  setDrumRouting: (drum: DrumType, channelId: number) => void;
-  getDrumRouting: (drum: DrumType) => number;
+  setDrumRouting: (drum: string, channelId: number) => void;
+  getDrumRouting: (drum: string) => number;
 }
 
 const NUM_CHANNELS = 16; // Master (0) + 15 insert channels
